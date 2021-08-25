@@ -1,8 +1,9 @@
 import sys
+from PyQt5.QtGui import QDropEvent
 from pyqtgraph.Qt import QtGui, QtCore
 import numpy as np
 import pyqtgraph as pg
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QLine, Qt
 from PyQt5.QtWidgets import *
 import time
 
@@ -12,7 +13,7 @@ class TimepixControl(QMainWindow):
         """Initializer"""
         super().__init__(parent)
         self.setWindowTitle("Timepix Control")
-        self.resize(1000,800)
+        self.resize(1200,800)
 
         #Create Centeral Widgets with underlying Layout
         window = QWidget()
@@ -23,39 +24,78 @@ class TimepixControl(QMainWindow):
         data = np.random.normal(size=256*256)
         data.resize(256,256)
         imv.setImage(data)
+        imv.ui.histogram.hide()
+        imv.ui.roiBtn.hide()
+        imv.ui.menuBtn.hide()
         layout.addWidget(imv)
 
         #Creating Toolbar on Right
         toolbar = QWidget()
-        toolbar.setFixedWidth(265)
-        toobarLayout = QVBoxLayout()
-        toobarLayout.addWidget(QLabel("Frame"))
-        toobarLayout.addWidget(QLabel("Min Level"))
-        toobarLayout.addWidget(QCheckBox("Lock"))
-        toobarLayout.addWidget(QLabel("Max Level"))
-        toobarLayout.addWidget(QCheckBox("Lock"))
-        toobarLayout.addWidget(QCheckBox("Auto Range"))
-        toobarLayout.addWidget(QCheckBox("Count Rate"))
-        toobarLayout.addWidget(QCheckBox("Histogram"))
-        toobarLayout.addWidget(QLabel("(Value Graph)"))
-        toobarLayout.addWidget(QLabel("(Pixel Values)"))
-        toobarLayout.addWidget(QLabel("Color map:"))
-        toobarLayout.addWidget(QComboBox())
-        toobarLayout.addWidget(QLabel("Filter chain:"))
-        toobarLayout.addWidget(QComboBox())
-        toobarLayout.addWidget(QCheckBox("Auto Update Preview"))
-        toolbar.setLayout(toobarLayout)
+        toolbar.setFixedWidth(350)#265)
+        toolbarLayout = QVBoxLayout()
+
+        frameToolLayout = QHBoxLayout()
+        frameToolLayout.addWidget(QLabel("Frame"))
+        frameToolLayout.addWidget(QSpinBox())
+        frameToolLayout.addWidget(QPushButton("Update"))
+        frameToolLayout.addWidget(QPushButton("<"))
+        frameToolLayout.addWidget(QPushButton(">"))
+        toolbarLayout.addLayout(frameToolLayout)
+        
+        
+        minLevelLayout = QGridLayout()
+        minLevelLayout.addWidget(QLabel("Min Level:"), 0, 0)
+        minLevelLayout.addWidget(QCheckBox("Lock"), 1, 0)
+        minLevelLayout.addWidget(QTextEdit(), 0, 1)
+        minLevelLayout.addWidget(QSlider(Qt.Horizontal), 1, 1)
+        minLevelLayout.addWidget(QPushButton("Under\n Warning"), 0, 2)
+        toolbarLayout.addLayout(minLevelLayout)
+
+        minLevelLayout = QGridLayout()
+        minLevelLayout.addWidget(QLabel("Min Level:"), 0, 0)
+        minLevelLayout.addWidget(QCheckBox("Lock"), 1, 0)
+        minLevelLayout.addWidget(QTextEdit(), 0, 1)
+        minLevelLayout.addWidget(QSlider(Qt.Horizontal), 1, 1)
+        minLevelLayout.addWidget(QPushButton("Over\n Warning"), 0, 2)
+        toolbarLayout.addLayout(minLevelLayout)
+
+        graphControlLayout = QGridLayout()
+        graphControlLayout.addWidget(QCheckBox("Auto Range:"), 0, 0)
+        graphControlLayout.addWidget(QComboBox(), 0, 1)
+        graphControlLayout.addWidget(QCheckBox("Count Rate"), 1, 0)
+        graphControlLayout.addWidget(QLabel("Time:"), 1, 1)
+        graphControlLayout.addWidget(QCheckBox("Histogram: "), 2, 0)
+        graphControlLayout.addWidget(QPushButton("Auto refine"), 2, 1)
+        toolbarLayout.addLayout(graphControlLayout)
+        
+        graphButtonLayout = QHBoxLayout()
+        graphButtonLayout.addWidget(QPushButton("<-"))
+        graphButtonLayout.addWidget(QPushButton("->"))
+        graphButtonLayout.addWidget(QPushButton("^"))
+        graphButtonLayout.addWidget(QPushButton("V"))
+        graphButtonLayout.addWidget(QPushButton("+<->"))
+        graphButtonLayout.addWidget(QPushButton("-<->"))
+        graphButtonLayout.addWidget(QPushButton("+^"))
+        graphButtonLayout.addWidget(QPushButton("-^"))
+        toolbarLayout.addLayout(graphButtonLayout)
+
+        toolbarLayout.addWidget(QTextEdit())
+        toolbarLayout.addWidget(QTextEdit())
+        
+        graphSettingsLayout = QGridLayout()
+        graphSettingsLayout.addWidget(QLabel("Color map:"), 0, 0)
+        graphSettingsLayout.addWidget(QComboBox(), 0, 1)
+        graphSettingsLayout.addWidget(QLabel("Filter chain:"), 1, 0)
+        graphSettingsLayout.addWidget(QComboBox(), 1, 1)
+        toolbarLayout.addLayout(graphSettingsLayout)
+        
+        toolbarLayout.addWidget(QCheckBox("Auto Update Preview"))
+        toolbar.setLayout(toolbarLayout)
         
         layout.addWidget(toolbar)
         window.setLayout(layout)
 
         self.setCentralWidget(window)
-
-        #self.resize(400, 200)
-        #label = QLabel("Hello World")
-        #label.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-        #self.setCentralWidget(label)
-
 
         self._createActions()
         self._createMenuBar()
@@ -109,8 +149,10 @@ class TimepixControl(QMainWindow):
         self.THHAdj.setCheckable(True)
         self.mode = QAction("Mode")
         self.mode.setCheckable(True)
+        self.mode.setDisabled(True)
         self.gainMode = QAction("Gain Mode")
         self.gainMode.setCheckable(True)
+        self.gainMode.setDisabled(True)
 
 
     def _createMenuBar(self):
@@ -156,6 +198,10 @@ class TimepixControl(QMainWindow):
         serviceMenu.addAction(self.gainMode)
 
         self.setMenuBar(menuBar)
+
+class TimepixToolbar(QWidget):
+    def __init__(self, parent=None):
+        pass
 
 
 if __name__ == "__main__":
