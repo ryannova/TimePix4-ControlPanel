@@ -1,44 +1,41 @@
+from logging import error
 import sys
 from PyQt5.QtGui import QDropEvent
+from PyQt5.QtCore import QThread, pyqtSignal
+from numpy.core import overrides
 from pyqtgraph.Qt import QtGui, QtCore
 import numpy as np
 import pyqtgraph as pg
 from PyQt5.QtCore import QLine, Qt
 from PyQt5.QtWidgets import *
 import time
+import socket
+import queue
 
-class TimepixControl(QMainWindow):
-    """Main Window"""
-    def __init__(self, parent=None):
-        """Initializer"""
-        super().__init__(parent)
-        self.setWindowTitle("Timepix Control")
-        self.resize(1200,800)
+import tp4
 
-        #Create Centeral Widgets with underlying Layout
-        window = QWidget()
-        layout = QHBoxLayout()
 
-        #Create Image Viewer on Left
-        imv = pg.ImageView()
-        data = np.random.normal(size=256*256)
-        data.resize(256,256)
-        imv.setImage(data)
-        imv.ui.histogram.hide()
-        imv.ui.roiBtn.hide()
-        imv.ui.menuBtn.hide()
-        layout.addWidget(imv)
+class TimepixControlToolbar(QWidget):
+    frameChanged = pyqtSignal(int) #emits when there is a new frame selected
 
-        #Creating Toolbar on Right
-        toolbar = QWidget()
-        toolbar.setFixedWidth(350)#265)
+    def __init__(self):
+        super(TimepixControlToolbar, self).__init__()
+        self.setFixedWidth(350)
         toolbarLayout = QVBoxLayout()
 
+        
         frameToolLayout = QHBoxLayout()
         frameToolLayout.addWidget(QLabel("Frame"))
-        frameToolLayout.addWidget(QSpinBox())
-        frameToolLayout.addWidget(QPushButton("Update"))
-        frameToolLayout.addWidget(QPushButton("<"))
+        self.frameCounterTool = QSpinBox()
+        self.frameCounterTool.valueChanged.connect(self._emit_frameChanged)
+        frameToolLayout.addWidget(self.frameCounterTool)
+
+        self.updateFrameButton = QPushButton("Update")
+        frameToolLayout.addWidget(self.updateFrameButton)
+
+        self.frameIncrement = QPushButton("<")
+        self.frameIncrement = QPushButton(">")
+        #frameToolLayout.addWidget()
         frameToolLayout.addWidget(QPushButton(">"))
         toolbarLayout.addLayout(frameToolLayout)
         
@@ -90,9 +87,79 @@ class TimepixControl(QMainWindow):
         toolbarLayout.addLayout(graphSettingsLayout)
         
         toolbarLayout.addWidget(QCheckBox("Auto Update Preview"))
-        toolbar.setLayout(toolbarLayout)
+        self.setLayout(toolbarLayout)
+    
+    def _emit_frameChanged(self, newFrame):
+        self.frameChanged.emit(newFrame)
+
+    def _create_Widgets():
+        pass
+
+    def _create_Layout():
+        pass
+
+class TimePixImageFetcher(QThread):
+    def __init__(self, imgViewer : pg.ImageView, host="127.0.0.1", port=2686, buffer_size=1000):
+        super().__init__()
+        self.imgViewer = imgViewer
+
+        self.packet_buffer = queue.Queue(maxsize=buffer_size)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.img = np.array([])
+
+
+        self.sock.bind((host, port))
+        self.counter = 0
+    
+    def run(self):
+        while True:
+            print("Gathering Data", self.counter)
+            packet = self.sock.recvfrom(tp4.PACKET_SIZE)
+            self.counter += 1
+
+            data = np.array([i for i in packet[0]])
+
+            self.img = np.append(self.img, data)
+            if self.counter >= 16:
+                self.img.resize(512,512)
+                self.imgViewer.setImage(self.img)
+                self.img = np.array([])
+                self.counter = 0
+                time.sleep(0.016)
+            #data.resize(128,128)
+            #self.imgViewer.setImage(data)
+            #time.sleep(0.016)
+
+class TimepixControl(QMainWindow):
+    """Main Window"""
+    def __init__(self, parent=None):
+        """Initializer"""
+        super().__init__(parent)
+        self.setWindowTitle("Timepix Control")
+        self.resize(1200,800)
+
+        #Create Centeral Widgets with underlying Layout
+        window = QWidget()
+        layout = QHBoxLayout()
+
+        #Create Image Viewer on Left
+        self.imgViewer = pg.ImageView()
+        data = np.random.normal(size=128*128)
+        data.resize(128,128)
+        self.imgViewer.setImage(data)
+        self.imgViewer.ui.histogram.hide()
+        self.imgViewer.ui.roiBtn.hide()
+        self.imgViewer.ui.menuBtn.hide()
+        layout.addWidget(self.imgViewer)
+
+        self.tp4_image_fetcher = TimePixImageFetcher(self.imgViewer)
+        self.tp4_image_fetcher.start()
+
+
+        self.toolbar = TimepixControlToolbar()
+        #self.toolbar.printTestSignal.connect(self.printTest)
         
-        layout.addWidget(toolbar)
+        layout.addWidget(self.toolbar)
         window.setLayout(layout)
 
         self.setCentralWidget(window)
@@ -102,6 +169,9 @@ class TimepixControl(QMainWindow):
 
     start_time = time.time()
     
+    def printTest(self, value):
+        print("Value Changed ", value)
+
     def _createActions(self):
         #Actions for the File Menu
         self.loadPicture = QAction("&Load Picture...", self)
