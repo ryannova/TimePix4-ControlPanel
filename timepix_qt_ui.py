@@ -3,6 +3,7 @@ import sys
 from PyQt5.QtGui import QDropEvent
 from PyQt5.QtCore import QThread, pyqtSignal
 from numpy.core import overrides
+from numpy.core.fromnumeric import size
 from pyqtgraph.Qt import QtGui, QtCore
 import numpy as np
 import pyqtgraph as pg
@@ -99,36 +100,38 @@ class TimepixControlToolbar(QWidget):
         pass
 
 class TimePixImageFetcher(QThread):
+    imageUpdated = pyqtSignal(np.ndarray)
+
     def __init__(self, imgViewer : pg.ImageView, host="127.0.0.1", port=2686, buffer_size=1000):
         super().__init__()
         self.imgViewer = imgViewer
 
         self.packet_buffer = queue.Queue(maxsize=buffer_size)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.img = np.array([])
+        self.img = np.zeros(512*512)
 
 
         self.sock.bind((host, port))
         self.counter = 0
+        self.integrate_mode = 1
     
     def run(self):
         while True:
-            print("Gathering Data", self.counter)
             packet = self.sock.recvfrom(tp4.PACKET_SIZE)
+            
+
+            for i in range(tp4.HEADER_SIZE,len(packet[0])):
+                self.img[(self.counter*128*128) + i - tp4.HEADER_SIZE] += packet[0][i]
+
             self.counter += 1
 
-            data = np.array([i for i in packet[0]])
-
-            self.img = np.append(self.img, data)
             if self.counter >= 16:
-                self.img.resize(512,512)
-                self.imgViewer.setImage(self.img)
-                self.img = np.array([])
+                img = np.reshape(self.img, (512,512))
+                self.imageUpdated.emit(img)
+                if not self.integrate_mode:
+                    self.img = np.zeros(512*512)
                 self.counter = 0
                 time.sleep(0.016)
-            #data.resize(128,128)
-            #self.imgViewer.setImage(data)
-            #time.sleep(0.016)
 
 class TimepixControl(QMainWindow):
     """Main Window"""
@@ -144,15 +147,14 @@ class TimepixControl(QMainWindow):
 
         #Create Image Viewer on Left
         self.imgViewer = pg.ImageView()
-        data = np.random.normal(size=128*128)
-        data.resize(128,128)
-        self.imgViewer.setImage(data)
-        self.imgViewer.ui.histogram.hide()
+        
+        #self.imgViewer.ui.histogram.hide()
         self.imgViewer.ui.roiBtn.hide()
         self.imgViewer.ui.menuBtn.hide()
         layout.addWidget(self.imgViewer)
 
         self.tp4_image_fetcher = TimePixImageFetcher(self.imgViewer)
+        self.tp4_image_fetcher.imageUpdated.connect(self.updateImageViewer)
         self.tp4_image_fetcher.start()
 
 
@@ -168,9 +170,9 @@ class TimepixControl(QMainWindow):
         self._createMenuBar()
 
     start_time = time.time()
-    
-    def printTest(self, value):
-        print("Value Changed ", value)
+
+    def updateImageViewer(self, img):
+        self.imgViewer.setImage(img, autoRange=False)
 
     def _createActions(self):
         #Actions for the File Menu
