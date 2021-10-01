@@ -41,7 +41,6 @@ class TP4ImageViewControl(QWidget):
         self.frameDecrement.setFixedWidth(30)
         self.frameIncrement = QPushButton(">")
         self.frameIncrement.setFixedWidth(30)
-        #frameToolLayout.addWidget()
         frameToolLayout.addWidget(self.frameDecrement)
         frameToolLayout.addWidget(self.frameIncrement)
         toolbarLayout.addLayout(frameToolLayout)
@@ -52,27 +51,29 @@ class TP4ImageViewControl(QWidget):
         minLevelLayout.addWidget(QLabel("Min Level:"), 0, 0)
         self.minLevelLock = QCheckBox("Lock")
         minLevelLayout.addWidget(self.minLevelLock, 1, 0)
-        self.minLevel = QTextEdit()
+        self.minLevel = QLineEdit()
         self.minLevel.setFixedHeight(28)
         minLevelLayout.addWidget(self.minLevel, 0, 1)
         self.minLevelSlider = QSlider(Qt.Horizontal)
+        self.minLevel.textChanged.connect(self.updateMinSlider)
         minLevelLayout.addWidget(self.minLevelSlider, 1, 1)
         minLevelLayout.addWidget(QPushButton("Under\n Warning"), 0, 2)
         toolbarLayout.addLayout(minLevelLayout)
 
         toolbarLayout.addWidget(QHLine())
 
-        minLevelLayout = QGridLayout()
-        minLevelLayout.addWidget(QLabel("Min Level:"), 0, 0)
+        maxLevelLayout = QGridLayout()
+        maxLevelLayout.addWidget(QLabel("Max Level:"), 0, 0)
         self.maxLevelLock = QCheckBox("Lock")
-        minLevelLayout.addWidget(self.maxLevelLock, 1, 0)
-        self.maxLevel = QTextEdit()
+        maxLevelLayout.addWidget(self.maxLevelLock, 1, 0)
+        self.maxLevel = QLineEdit()
         self.maxLevel.setFixedHeight(28)
-        minLevelLayout.addWidget(self.maxLevel, 0, 1)
+        maxLevelLayout.addWidget(self.maxLevel, 0, 1)
         self.maxLevelSlider = QSlider(Qt.Horizontal)
-        minLevelLayout.addWidget(self.maxLevelSlider, 1, 1)
-        minLevelLayout.addWidget(QPushButton("Over\n Warning"), 0, 2)
-        toolbarLayout.addLayout(minLevelLayout)
+        self.maxLevel.textChanged.connect(self.updateMaxSlider)
+        maxLevelLayout.addWidget(self.maxLevelSlider, 1, 1)
+        maxLevelLayout.addWidget(QPushButton("Over\n Warning"), 0, 2)
+        toolbarLayout.addLayout(maxLevelLayout)
 
         toolbarLayout.addWidget(QHLine())
 
@@ -113,8 +114,31 @@ class TP4ImageViewControl(QWidget):
         toolbarLayout.addWidget(QCheckBox("Auto Update Preview"))
         self.setLayout(toolbarLayout)
     
-    def setLevels(minLevel, maxLevel, levelRange):
-        print(minLevel, maxLevel, levelRange)
+    def setLevelRange(self, minLevel, maxLevel):
+        self.minLevelSlider.setMinimum(minLevel)
+        self.minLevelSlider.setMaximum(maxLevel)
+        self.maxLevelSlider.setMinimum(minLevel)
+        self.maxLevelSlider.setMaximum(maxLevel)
+    
+    def updateMinText(self):
+        self.minLevel.setText(str(self.minLevelSlider.value()))
+
+    def updateMinSlider(self):
+        try:
+            self.minLevelSlider.setValue(int(float(self.minLevel.text())))
+        except ValueError:
+            print("Value Error Min Level")
+
+    def updateMaxText(self):
+        pass
+
+    def updateMaxSlider(self):
+        try:
+            self.maxLevelSlider.setValue(int(float(self.maxLevel.text())))
+        except ValueError:
+            print("Value Error Min Level")
+
+    
 
     def update(self):
         isAutoLevel = self.autoLevel.isChecked()
@@ -124,12 +148,6 @@ class TP4ImageViewControl(QWidget):
         self.maxLevel.setDisabled(isAutoLevel)
         self.maxLevelSlider.setDisabled(isAutoLevel)
         self.maxLevelLock.setDisabled(isAutoLevel)
-
-    def _create_Widgets():
-        pass
-
-    def _create_Layout():
-        pass
 
 class TimePixImageFetcher(QThread):
     imageUpdated = pyqtSignal(np.ndarray)
@@ -200,11 +218,24 @@ class TimepixControl(QMainWindow):
     def updateImageViewer(self, img):
         self.imgViewer.setImage(img, autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
 
-        #self.imgViewerControl.setLevels(self.imgViewer.levelMin, self.imgViewer.levelMax, levelRange=self.imgViewer.quickMinMax(self.imgViewer.imageDisp))
+        self.imgViewerControl.setLevelRange(int(self.imgViewer._imageLevels[0][0]), int(self.imgViewer._imageLevels[0][1]))
+
+        if self.imgViewerControl.autoLevel.isChecked():
+            self.imgViewerControl.minLevel.setText(str(self.imgViewer.levelMin))
+            #self.imgViewerControl.minLevelSlider.setValue(int(self.imgViewer.levelMin))
+            self.imgViewerControl.maxLevel.setText(str(self.imgViewer.levelMax))
+            #self.imgViewerControl.maxLevelSlider.setValue(int(self.imgViewer.levelMax))
+        else:
+            try:
+                self.imgViewer.setLevels(float(self.imgViewerControl.minLevel.text()), float(self.imgViewerControl.maxLevel.text()))
+            except ValueError:
+                print("Value Error")
+
+
+        #print(self.imgViewerControl.minLevelSlider.value(), self.imgViewerControl.maxLevelSlider.value())
+        #self.imgViewerControl.setLevelRange(self.imgViewer.levelMin, self.imgViewer.levelMax)
 
         self.imgViewerControl.update()
-        self.imgViewerControl.minLevel.setPlainText(str(self.imgViewer.levelMin))
-        self.imgViewerControl.maxLevel.setPlainText(str(self.imgViewer.levelMax))
 
     def _createActions(self):
         #Actions for the File Menu
