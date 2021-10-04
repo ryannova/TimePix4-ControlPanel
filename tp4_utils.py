@@ -9,9 +9,6 @@ class tp4_config:
     def make(self, data_dict, preface="") -> bool:
         file = open(self.filename, "w")
         for k in data_dict:
-            #if type(data_dict[k]) == dict:
-            #    self.make(data_dict[k], preface="")
-            #else:
             file.write("{}: {}\n".format(k, data_dict[k]))
         file.close()
 
@@ -26,8 +23,6 @@ class tp4_config:
                 line = file.readline()
                 continue
             preface_index = 0
-            #while line[preface_index] == "\t":
-            #    preface_index += 1
 
             key = line[0:line.find(":")].replace("\n", "")
             value = line[line.find(":")+1:].replace("\n", "") 
