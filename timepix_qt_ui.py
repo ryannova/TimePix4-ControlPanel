@@ -53,9 +53,10 @@ class TP4ImageViewControl(QWidget):
         minLevelLayout.addWidget(self.minLevelLock, 1, 0)
         self.minLevel = QLineEdit()
         self.minLevel.setFixedHeight(28)
+        self.minLevel.textChanged.connect(self.updateMinSlider)
         minLevelLayout.addWidget(self.minLevel, 0, 1)
         self.minLevelSlider = QSlider(Qt.Horizontal)
-        self.minLevel.textChanged.connect(self.updateMinSlider)
+        self.minLevelSlider.sliderMoved.connect(self.updateMinText)
         minLevelLayout.addWidget(self.minLevelSlider, 1, 1)
         minLevelLayout.addWidget(QPushButton("Under\n Warning"), 0, 2)
         toolbarLayout.addLayout(minLevelLayout)
@@ -68,9 +69,10 @@ class TP4ImageViewControl(QWidget):
         maxLevelLayout.addWidget(self.maxLevelLock, 1, 0)
         self.maxLevel = QLineEdit()
         self.maxLevel.setFixedHeight(28)
+        self.maxLevel.textChanged.connect(self.updateMaxSlider)
         maxLevelLayout.addWidget(self.maxLevel, 0, 1)
         self.maxLevelSlider = QSlider(Qt.Horizontal)
-        self.maxLevel.textChanged.connect(self.updateMaxSlider)
+        self.maxLevelSlider.sliderMoved.connect(self.updateMaxText)
         maxLevelLayout.addWidget(self.maxLevelSlider, 1, 1)
         maxLevelLayout.addWidget(QPushButton("Over\n Warning"), 0, 2)
         toolbarLayout.addLayout(maxLevelLayout)
@@ -114,7 +116,7 @@ class TP4ImageViewControl(QWidget):
         toolbarLayout.addWidget(QCheckBox("Auto Update Preview"))
         self.setLayout(toolbarLayout)
     
-    def setLevelRange(self, minLevel, maxLevel):
+    def updateLevelRange(self, minLevel, maxLevel):
         self.minLevelSlider.setMinimum(minLevel)
         self.minLevelSlider.setMaximum(maxLevel)
         self.maxLevelSlider.setMinimum(minLevel)
@@ -130,15 +132,13 @@ class TP4ImageViewControl(QWidget):
             print("Value Error Min Level")
 
     def updateMaxText(self):
-        pass
+        self.maxLevel.setText(str(self.maxLevelSlider.value()))
 
     def updateMaxSlider(self):
         try:
             self.maxLevelSlider.setValue(int(float(self.maxLevel.text())))
         except ValueError:
             print("Value Error Min Level")
-
-    
 
     def update(self):
         isAutoLevel = self.autoLevel.isChecked()
@@ -204,7 +204,7 @@ class TimepixControl(QMainWindow):
         self.tp4_image_fetcher.start()
 
         self.imgViewerControl = TP4ImageViewControl()
-        
+        self.imgViewerControl.updateLevelRange(-10,254+10)
         layout.addWidget(self.imgViewerControl)
         window.setLayout(layout)
 
@@ -218,22 +218,16 @@ class TimepixControl(QMainWindow):
     def updateImageViewer(self, img):
         self.imgViewer.setImage(img, autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
 
-        self.imgViewerControl.setLevelRange(int(self.imgViewer._imageLevels[0][0]), int(self.imgViewer._imageLevels[0][1]))
+        self.imgViewerControl.updateLevelRange(int(self.imgViewer._imageLevels[0][0])-10, int(self.imgViewer._imageLevels[0][1])+10)
 
         if self.imgViewerControl.autoLevel.isChecked():
-            self.imgViewerControl.minLevel.setText(str(self.imgViewer.levelMin))
-            #self.imgViewerControl.minLevelSlider.setValue(int(self.imgViewer.levelMin))
-            self.imgViewerControl.maxLevel.setText(str(self.imgViewer.levelMax))
-            #self.imgViewerControl.maxLevelSlider.setValue(int(self.imgViewer.levelMax))
+            self.imgViewerControl.minLevel.setText(str(int(self.imgViewer.levelMin)))
+            self.imgViewerControl.maxLevel.setText(str(int(self.imgViewer.levelMax)))
         else:
             try:
                 self.imgViewer.setLevels(float(self.imgViewerControl.minLevel.text()), float(self.imgViewerControl.maxLevel.text()))
             except ValueError:
                 print("Value Error")
-
-
-        #print(self.imgViewerControl.minLevelSlider.value(), self.imgViewerControl.maxLevelSlider.value())
-        #self.imgViewerControl.setLevelRange(self.imgViewer.levelMin, self.imgViewer.levelMax)
 
         self.imgViewerControl.update()
 
