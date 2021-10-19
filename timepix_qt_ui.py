@@ -22,6 +22,8 @@ class QHLine(QFrame):
         self.setFrameShadow(QFrame.Sunken)
 
 class TP4ImageViewControl(QWidget):
+    set_img = pyqtSignal(int)
+    histogram_img = pyqtSignal(int)
 
     def __init__(self, autoLevel=True):
         super(TP4ImageViewControl, self).__init__()
@@ -32,15 +34,21 @@ class TP4ImageViewControl(QWidget):
         frameToolLayout = QHBoxLayout()
         frameToolLayout.addWidget(QLabel("Frame"))
         self.frameCounterTool = QSpinBox()
+        self.frameCounterTool.valueChanged.connect(self.setImgFrame)
         frameToolLayout.addWidget(self.frameCounterTool)
 
         self.updateFrame = QPushButton("Update")
+        self.updateFrame.setCheckable(True)
+        self.updateFrame.setChecked(True)
+        self.updateFrame.pressed.connect(self.imageUpdateChange)
         frameToolLayout.addWidget(self.updateFrame)
 
         self.frameDecrement = QPushButton("<")
         self.frameDecrement.setFixedWidth(30)
+        self.frameDecrement.pressed.connect(self.decrementFrame)
         self.frameIncrement = QPushButton(">")
         self.frameIncrement.setFixedWidth(30)
+        self.frameIncrement.pressed.connect(self.incrementFrame)
         frameToolLayout.addWidget(self.frameDecrement)
         frameToolLayout.addWidget(self.frameIncrement)
         toolbarLayout.addLayout(frameToolLayout)
@@ -82,11 +90,15 @@ class TP4ImageViewControl(QWidget):
         graphControlLayout = QGridLayout()
         self.autoLevel = QCheckBox("Auto Range:")
         self.autoLevel.setChecked(autoLevel)
+        self.updateAutoLevel(True)
+        self.autoLevel.stateChanged.connect(self.updateAutoLevel)
         graphControlLayout.addWidget(self.autoLevel, 0, 0)
         graphControlLayout.addWidget(QComboBox(), 0, 1)
         graphControlLayout.addWidget(QCheckBox("Count Rate"), 1, 0)
         graphControlLayout.addWidget(QLabel("Time:"), 1, 1)
-        graphControlLayout.addWidget(QCheckBox("Histogram: "), 2, 0)
+        self.histogram = QCheckBox("Histogram: ")
+        self.histogram.stateChanged.connect(self.histogram_img)
+        graphControlLayout.addWidget(self.histogram, 2, 0)
         graphControlLayout.addWidget(QPushButton("Auto refine"), 2, 1)
         toolbarLayout.addLayout(graphControlLayout)
 
@@ -115,6 +127,27 @@ class TP4ImageViewControl(QWidget):
         
         toolbarLayout.addWidget(QCheckBox("Auto Update Preview"))
         self.setLayout(toolbarLayout)
+
+    def imageUpdateChange(self):
+        if not self.updateFrame.isChecked():
+            self.histogram.setChecked(False)
+
+    def incrementFrame(self):
+        if self.updateFrame.isChecked():
+            return
+        self.frameCounterTool.setValue(self.frameCounterTool.value()+1)
+        self.set_img.emit(self.frameCounterTool.value())
+
+    def decrementFrame(self):
+        if self.updateFrame.isChecked():
+            return
+        self.frameCounterTool.setValue(self.frameCounterTool.value()-1)
+        self.set_img.emit(self.frameCounterTool.value())
+
+    def setImgFrame(self, index):
+        if self.updateFrame.isChecked():
+            return
+        self.set_img.emit(index)
     
     def updateLevelRange(self, minLevel, maxLevel):
         self.minLevelSlider.setMinimum(minLevel)
@@ -140,14 +173,13 @@ class TP4ImageViewControl(QWidget):
         except ValueError:
             print("Value Error Min Level")
 
-    def update(self):
-        isAutoLevel = self.autoLevel.isChecked()
-        self.minLevel.setDisabled(isAutoLevel)
-        self.minLevelSlider.setDisabled(isAutoLevel)
-        self.minLevelLock.setDisabled(isAutoLevel)
-        self.maxLevel.setDisabled(isAutoLevel)
-        self.maxLevelSlider.setDisabled(isAutoLevel)
-        self.maxLevelLock.setDisabled(isAutoLevel)
+    def updateAutoLevel(self, autoLevel):
+        self.minLevel.setDisabled(autoLevel)
+        self.minLevelSlider.setDisabled(autoLevel)
+        self.minLevelLock.setDisabled(autoLevel)
+        self.maxLevel.setDisabled(autoLevel)
+        self.maxLevelSlider.setDisabled(autoLevel)
+        self.maxLevelLock.setDisabled(autoLevel)
 
 class TimePixImageFetcher(QThread):
     imageUpdated = pyqtSignal(np.ndarray)
@@ -182,11 +214,15 @@ class TimePixImageFetcher(QThread):
 
 class TimepixControl(QMainWindow):
     """Main Window"""
-    def __init__(self, parent=None):
+    def __init__(self, buffer_size=1000, parent=None):
         """Initializer"""
         super().__init__(parent)
         self.setWindowTitle("Timepix Control")
         self.resize(1200,800)
+        self.img_buffer = np.zeros((buffer_size, 512, 512))
+        self.img_buffer_size = buffer_size
+        self.img_buffer_ptr = 0
+        self.buffer_filled = False
 
         #Create Centeral Widgets with underlying Layout
         window = QWidget()
@@ -205,6 +241,9 @@ class TimepixControl(QMainWindow):
 
         self.imgViewerControl = TP4ImageViewControl()
         self.imgViewerControl.updateLevelRange(-10,254+10)
+        self.imgViewerControl.frameCounterTool.setMaximum(buffer_size)
+        self.imgViewerControl.set_img.connect(self.setImageFromBuffer)
+        self.imgViewerControl.histogram_img.connect(self.setHistogramImage)
         layout.addWidget(self.imgViewerControl)
         window.setLayout(layout)
 
@@ -215,9 +254,43 @@ class TimepixControl(QMainWindow):
 
     start_time = time.time()
 
+    def setImageFromBuffer(self, index):
+        if self.buffer_filled:
+            self.imgViewer.setImage(self.img_buffer[(index + self.img_buffer_ptr) % self.img_buffer_size], autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
+        else:
+            self.imgViewer.setImage(self.img_buffer[index], autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
+
+        self.imgViewerControl.updateLevelRange(int(self.imgViewer._imageLevels[0][0])-10, int(self.imgViewer._imageLevels[0][1])+10)
+        
+        if self.imgViewerControl.autoLevel.isChecked():
+            self.imgViewerControl.minLevel.setText(str(int(self.imgViewer.levelMin)))
+            self.imgViewerControl.maxLevel.setText(str(int(self.imgViewer.levelMax)))
+            
+    
+    def setHistogramImage(self, state):
+        if self.imgViewerControl.updateFrame.isChecked() or not state:
+            return
+        self.imgViewer.setImage(np.sum(self.img_buffer, axis=0), autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
+
+        self.imgViewerControl.updateLevelRange(int(self.imgViewer._imageLevels[0][0])-10, int(self.imgViewer._imageLevels[0][1])+10)
+
+        if self.imgViewerControl.autoLevel.isChecked():
+            self.imgViewerControl.minLevel.setText(str(int(self.imgViewer.levelMin)))
+            self.imgViewerControl.maxLevel.setText(str(int(self.imgViewer.levelMax)))
+
     def updateImageViewer(self, img):
+        if not self.imgViewerControl.updateFrame.isChecked():
+            return
+        self.img_buffer[self.img_buffer_ptr % self.img_buffer_size] = img
         self.imgViewer.setImage(img, autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
 
+        if self.buffer_filled:
+            self.imgViewerControl.frameCounterTool.setValue(self.img_buffer_size)
+        else:
+            self.imgViewerControl.frameCounterTool.setValue(self.img_buffer_ptr)
+        self.img_buffer_ptr = (self.img_buffer_ptr + 1) % self.img_buffer_size
+        if self.img_buffer_ptr == 0:
+            self.buffer_filled = True
         self.imgViewerControl.updateLevelRange(int(self.imgViewer._imageLevels[0][0])-10, int(self.imgViewer._imageLevels[0][1])+10)
 
         if self.imgViewerControl.autoLevel.isChecked():
@@ -228,8 +301,6 @@ class TimepixControl(QMainWindow):
                 self.imgViewer.setLevels(float(self.imgViewerControl.minLevel.text()), float(self.imgViewerControl.maxLevel.text()))
             except ValueError:
                 print("Value Error")
-
-        self.imgViewerControl.update()
 
     def _createActions(self):
         #Actions for the File Menu
