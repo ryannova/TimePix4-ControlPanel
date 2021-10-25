@@ -1,4 +1,4 @@
-from logging import error
+from logging import NullHandler, error
 import sys
 from PyQt5.QtGui import QDropEvent
 from PyQt5.QtCore import QThread, pyqtSignal
@@ -14,6 +14,52 @@ import socket
 import queue
 
 import tp4
+
+class CursorDetails(QLabel):
+    textFormat = """[X,Y]:\t\t[{x_val},{y_val}]
+Count:\t\t{count}
+Min:\t\t{min}
+Max:\t\t{max}
+Total:\t\t{total}
+Mean:\t\t{mean}
+Std. dev.:\t{std}\n\n"""
+    def __init__(self, x_val=0, y_val=0, count=0, min=0, max=0, total=0, mean=0, std=0):
+        super(QLabel, self).__init__()
+        self.x_val = x_val
+        self.y_val = y_val
+        self.count = count
+        self.min = min
+        self.max = max
+        self.total = total
+        self.mean = mean
+        self.std = std
+        self.updateText()
+        
+    def updateText(self):
+        self.setText(self.textFormat.format(x_val=self.x_val, 
+                                            y_val=self.y_val, 
+                                            count=self.count, 
+                                            min=self.min, 
+                                            max=self.max, 
+                                            total=self.total, 
+                                            mean=self.mean, 
+                                            std=self.std))
+
+    def setCursorHover(self, x_val, y_val, count):
+        self.x_val = x_val
+        self.y_val = y_val
+        self.count = count
+        self.updateText()
+
+    def setImageStats(self, min, max, total, mean, std, count=None):
+        self.min = min
+        self.max = max
+        self.total = total
+        self.mean = mean
+        self.std = std
+        if count != None:
+            self.count = count
+        self.updateText()
 
 class QHLine(QFrame):
     def __init__(self):
@@ -37,7 +83,7 @@ class TP4ImageViewControl(QWidget):
         self.frameCounterTool.valueChanged.connect(self.setImgFrame)
         frameToolLayout.addWidget(self.frameCounterTool)
 
-        self.updateFrame = QPushButton("Update")
+        self.updateFrame = QPushButton("Start")
         self.updateFrame.setCheckable(True)
         self.updateFrame.setChecked(True)
         self.updateFrame.pressed.connect(self.imageUpdateChange)
@@ -97,7 +143,7 @@ class TP4ImageViewControl(QWidget):
         graphControlLayout.addWidget(QCheckBox("Count Rate"), 1, 0)
         graphControlLayout.addWidget(QLabel("Time:"), 1, 1)
         self.histogram = QCheckBox("Histogram: ")
-        self.histogram.stateChanged.connect(self.histogram_img)
+        #self.histogram.stateChanged.connect(self.histogram_img)
         graphControlLayout.addWidget(self.histogram, 2, 0)
         graphControlLayout.addWidget(QPushButton("Auto refine"), 2, 1)
         toolbarLayout.addLayout(graphControlLayout)
@@ -115,8 +161,17 @@ class TP4ImageViewControl(QWidget):
         graphButtonLayout.addWidget(QPushButton("-^"))
         toolbarLayout.addLayout(graphButtonLayout)
 
+        # create list for y-axis
+        y1 = [5, 5, 7, 10, 3, 8, 9, 1, 6, 2]
+        
+        # create horizontal list i.e x-axis
+        x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+        bargraph = pg.BarGraphItem(x = x, height = y1, width = 0.6, brush = 'g')
+
         toolbarLayout.addWidget(QTextEdit())
-        toolbarLayout.addWidget(QTextEdit())
+        self.cursorDetails = CursorDetails()
+        toolbarLayout.addWidget(self.cursorDetails)
         
         graphSettingsLayout = QGridLayout()
         graphSettingsLayout.addWidget(QLabel("Color map:"), 0, 0)
@@ -181,6 +236,27 @@ class TP4ImageViewControl(QWidget):
         self.maxLevelSlider.setDisabled(autoLevel)
         self.maxLevelLock.setDisabled(autoLevel)
 
+
+class TimePixImageTabs(QWidget):
+    def __init__(self) -> None:
+        super().__init__()
+        imgTabsLayout = QHBoxLayout()
+        self.frameButton = QPushButton("Frame")
+        self.frameButton.setCheckable(True)
+        self.frameButton.setChecked(True)
+        self.maskButton = QPushButton("Mask")
+        self.maskButton.setCheckable(True)
+        self.testButton = QPushButton("Test")
+        self.testButton.setCheckable(True)
+        self.thlButton = QPushButton("THL")
+        self.thlButton.setCheckable(True)
+        imgTabsLayout.addWidget(self.frameButton)
+        imgTabsLayout.addWidget(self.maskButton)
+        imgTabsLayout.addWidget(self.testButton)
+        imgTabsLayout.addWidget(self.thlButton)
+
+        self.setLayout(imgTabsLayout)
+
 class TimePixImageFetcher(QThread):
     imageUpdated = pyqtSignal(np.ndarray)
 
@@ -229,11 +305,18 @@ class TimepixControl(QMainWindow):
         layout = QHBoxLayout()
 
         #Create Image Viewer on Left
+        imgLayout = QVBoxLayout()
         self.imgViewer = pg.ImageView()
-        #self.imgViewer.ui.histogram.hide()
+        self.imgViewer.ui.histogram.hide()
         self.imgViewer.ui.roiBtn.hide()
         self.imgViewer.ui.menuBtn.hide()
-        layout.addWidget(self.imgViewer)
+        self.imgViewer.scene.sigMouseMoved.connect(self.mouseMoved)
+        imgLayout.addWidget(self.imgViewer)
+
+        self.imgTabs = TimePixImageTabs()
+        imgLayout.addWidget(self.imgTabs)
+
+        layout.addLayout(imgLayout)
 
         self.tp4_image_fetcher = TimePixImageFetcher(self.imgViewer)
         self.tp4_image_fetcher.imageUpdated.connect(self.updateImageViewer)
@@ -254,11 +337,28 @@ class TimepixControl(QMainWindow):
 
     start_time = time.time()
 
+    def mouseMoved(self, pos):
+        x = int(self.imgViewer.getImageItem().mapFromScene(pos).x())
+        y = int(self.imgViewer.getImageItem().mapFromScene(pos).y())
+        if x >= len(self.imgViewer.image) or y >= len(self.imgViewer.image[0]):
+            return
+        count = self.imgViewer.image[x,y]
+        self.imgViewerControl.cursorDetails.setCursorHover(x_val=x, y_val=y, count=count)
+
     def setImageFromBuffer(self, index):
         if self.buffer_filled:
-            self.imgViewer.setImage(self.img_buffer[(index + self.img_buffer_ptr) % self.img_buffer_size], autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
+            img = self.img_buffer[(index + self.img_buffer_ptr) % self.img_buffer_size]
         else:
-            self.imgViewer.setImage(self.img_buffer[index], autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
+            img = self.img_buffer[index]
+        
+        self.imgViewer.setImage(img, autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
+        self.imgViewerControl.cursorDetails.setImageStats(np.min(img), 
+                                                        np.max(img), 
+                                                        np.sum(img), 
+                                                        np.mean(img), 
+                                                        np.std(img), 
+            count=img[self.imgViewerControl.cursorDetails.x_val, self.imgViewerControl.cursorDetails.y_val])
+
 
         self.imgViewerControl.updateLevelRange(int(self.imgViewer._imageLevels[0][0])-10, int(self.imgViewer._imageLevels[0][1])+10)
         
@@ -283,6 +383,13 @@ class TimepixControl(QMainWindow):
             return
         self.img_buffer[self.img_buffer_ptr % self.img_buffer_size] = img
         self.imgViewer.setImage(img, autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
+
+        self.imgViewerControl.cursorDetails.setImageStats(np.min(img), 
+                                                        np.max(img), 
+                                                        np.sum(img), 
+                                                        np.mean(img), 
+                                                        np.std(img), 
+            count=img[self.imgViewerControl.cursorDetails.x_val, self.imgViewerControl.cursorDetails.y_val])
 
         if self.buffer_filled:
             self.imgViewerControl.frameCounterTool.setValue(self.img_buffer_size)
