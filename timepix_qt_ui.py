@@ -1,3 +1,4 @@
+from enum import auto
 from logging import NullHandler, error
 import sys
 from PyQt5.QtGui import QDropEvent
@@ -12,8 +13,12 @@ from PyQt5.QtWidgets import *
 import time
 import socket
 import queue
+from PIL import Image
 
 import tp4
+
+
+pg.setConfigOption('background', 'w')
 
 class CursorDetails(QLabel):
     textFormat = """[X,Y]:\t\t[{x_val},{y_val}]
@@ -237,25 +242,120 @@ class TP4ImageViewControl(QWidget):
         self.maxLevelLock.setDisabled(autoLevel)
 
 
+class ImageModes():
+    Imaging = 1
+    Mask = 2
+    Test = 3
+    THL = 4
+
+
 class TimePixImageTabs(QWidget):
+    modeChanged = pyqtSignal(int)
+
     def __init__(self) -> None:
         super().__init__()
         imgTabsLayout = QHBoxLayout()
         self.frameButton = QPushButton("Frame")
         self.frameButton.setCheckable(True)
+        self.frameButton.pressed.connect(self.framePressed)
         self.frameButton.setChecked(True)
         self.maskButton = QPushButton("Mask")
         self.maskButton.setCheckable(True)
+        self.maskButton.pressed.connect(self.maskPressed)
         self.testButton = QPushButton("Test")
         self.testButton.setCheckable(True)
+        self.testButton.pressed.connect(self.testPressed)
         self.thlButton = QPushButton("THL")
         self.thlButton.setCheckable(True)
+        self.thlButton.pressed.connect(self.thlPressed)
         imgTabsLayout.addWidget(self.frameButton)
         imgTabsLayout.addWidget(self.maskButton)
         imgTabsLayout.addWidget(self.testButton)
         imgTabsLayout.addWidget(self.thlButton)
 
+        self.checkedButton = self.frameButton
+
         self.setLayout(imgTabsLayout)
+    
+    def framePressed(self):
+        self.checkedButton.setChecked(False)
+        self.checkedButton = self.frameButton
+        self.modeChanged.emit(ImageModes.Imaging)
+
+    def maskPressed(self):
+        self.checkedButton.setChecked(False)
+        self.checkedButton = self.maskButton
+        self.modeChanged.emit(ImageModes.Mask)
+
+    def testPressed(self):
+        self.checkedButton.setChecked(False)
+        self.checkedButton = self.testButton
+        self.modeChanged.emit(ImageModes.Test)
+
+    def thlPressed(self):
+        self.checkedButton.setChecked(False)
+        self.checkedButton = self.thlButton
+        self.modeChanged.emit(ImageModes.THL)
+    
+class ImageControlModes():
+    Point = 1
+    Row = 2
+    Column = 3
+    Area = 4
+
+class TimePixImageControls(QWidget):
+    modeChanged = pyqtSignal(int)
+
+    def __init__(self) -> None:
+        super().__init__()
+        imgTabsLayout = QHBoxLayout()
+        self.pointButton = QPushButton("Point")
+        self.pointButton.setCheckable(True)
+        self.pointButton.pressed.connect(self.pointPressed)
+        self.pointButton.setChecked(True)
+        self.rowButton = QPushButton("Row")
+        self.rowButton.setCheckable(True)
+        self.rowButton.pressed.connect(self.rowPressed)
+        self.columnButton = QPushButton("Column")
+        self.columnButton.setCheckable(True)
+        self.columnButton.pressed.connect(self.columnPressed)
+        self.areaButton = QPushButton("Area")
+        self.areaButton.setCheckable(True)
+        self.areaButton.pressed.connect(self.areaPressed)
+        self.areaRow = QSpinBox()
+        self.areaRow.setValue(3)
+        self.areaCol = QSpinBox()
+        self.areaCol.setValue(3)
+        imgTabsLayout.addWidget(self.pointButton)
+        imgTabsLayout.addWidget(self.rowButton)
+        imgTabsLayout.addWidget(self.columnButton)
+        imgTabsLayout.addWidget(self.areaButton)
+        imgTabsLayout.addWidget(self.areaRow)
+        imgTabsLayout.addWidget(self.areaCol)
+
+        self.checkedButton = self.pointButton
+
+        self.setLayout(imgTabsLayout)
+    
+    def pointPressed(self):
+        self.checkedButton.setChecked(False)
+        self.checkedButton = self.pointButton
+        self.modeChanged.emit(ImageControlModes.Point)
+
+    def columnPressed(self):
+        self.checkedButton.setChecked(False)
+        self.checkedButton = self.columnButton
+        self.modeChanged.emit(ImageControlModes.Column)
+
+    def rowPressed(self):
+        self.checkedButton.setChecked(False)
+        self.checkedButton = self.rowButton
+        self.modeChanged.emit(ImageControlModes.Row)
+
+    def areaPressed(self):
+        self.checkedButton.setChecked(False)
+        self.checkedButton = self.areaButton
+        self.modeChanged.emit(ImageControlModes.Area)
 
 class TimePixImageFetcher(QThread):
     imageUpdated = pyqtSignal(np.ndarray)
@@ -288,6 +388,7 @@ class TimePixImageFetcher(QThread):
                 self.counter = 0
                 time.sleep(1/self.fps)
 
+
 class TimepixControl(QMainWindow):
     """Main Window"""
     def __init__(self, buffer_size=1000, parent=None):
@@ -300,20 +401,39 @@ class TimepixControl(QMainWindow):
         self.img_buffer_ptr = 0
         self.buffer_filled = False
 
+        self.img_mode = ImageModes.Imaging
+        self.test_image = np.zeros((512,512))
+        self.mask_image = np.zeros((512,512))
+        self.thl_image = np.zeros((512,512))
+
         #Create Centeral Widgets with underlying Layout
         window = QWidget()
         layout = QHBoxLayout()
 
         #Create Image Viewer on Left
         imgLayout = QVBoxLayout()
-        self.imgViewer = pg.ImageView()
+
+        self.imgControlMode = ImageControlModes.Point
+        self.imgControl = TimePixImageControls()
+        self.imgControl.modeChanged.connect(self.changeImageControlMode)
+        self.imgControl.setVisible(False)
+        imgLayout.addWidget(self.imgControl)
+
+        plot = pg.PlotItem()
+        plot.setLabel(axis='left', text='Y-axis')
+        plot.setLabel(axis='bottom', text='X-axis')
+
+        self.imgViewer = pg.ImageView(view=plot)
+        self.imgViewer.setImage(np.zeros((512,512)))
         self.imgViewer.ui.histogram.hide()
         self.imgViewer.ui.roiBtn.hide()
         self.imgViewer.ui.menuBtn.hide()
         self.imgViewer.scene.sigMouseMoved.connect(self.mouseMoved)
+        self.imgViewer.scene.sigMouseClicked.connect(self.mouseClicked)
         imgLayout.addWidget(self.imgViewer)
 
         self.imgTabs = TimePixImageTabs()
+        self.imgTabs.modeChanged.connect(self.changeImageMode)
         imgLayout.addWidget(self.imgTabs)
 
         layout.addLayout(imgLayout)
@@ -335,15 +455,70 @@ class TimepixControl(QMainWindow):
         self._createActions()
         self._createMenuBar()
 
-    start_time = time.time()
+    def changeImageControlMode(self, mode):
+        self.imgControlMode = mode
+
+    def changeImageMode(self, mode):
+        if mode == ImageModes.Imaging:
+            self.img_mode = mode
+            self.imgViewerControl.updateFrame.setChecked(False)
+            self.imgViewer.setImage(self.img_buffer[self.imgViewerControl.frameCounterTool.value()])
+            self.imgControl.setVisible(False)
+        elif mode == ImageModes.Mask:
+            self.img_mode = mode
+            self.imgViewerControl.updateFrame.setChecked(False)
+            self.imgViewer.setImage(self.mask_image, autoLevels=True)
+            self.imgControl.setVisible(True)
+        elif mode == ImageModes.Test:
+            self.img_mode = mode
+            self.imgViewerControl.updateFrame.setChecked(False)
+            self.imgViewer.setImage(self.test_image, autoLevels=True)
+            self.imgControl.setVisible(True)
+        elif mode == ImageModes.THL:
+            self.img_mode = mode
+            self.imgViewerControl.updateFrame.setChecked(False)
+            self.imgViewer.setImage(self.thl_image, autoLevels=True)
+            self.imgControl.setVisible(True)
 
     def mouseMoved(self, pos):
         x = int(self.imgViewer.getImageItem().mapFromScene(pos).x())
         y = int(self.imgViewer.getImageItem().mapFromScene(pos).y())
-        if x >= len(self.imgViewer.image) or y >= len(self.imgViewer.image[0]):
+        if x < 0 or y < 0 or x >= len(self.imgViewer.image) or y >= len(self.imgViewer.image[0]):
             return
         count = self.imgViewer.image[x,y]
         self.imgViewerControl.cursorDetails.setCursorHover(x_val=x, y_val=y, count=count)
+    
+    def mouseClicked(self, event):
+        pos = event.scenePos()
+        x = int(self.imgViewer.getImageItem().mapFromScene(pos).x())
+        y = int(self.imgViewer.getImageItem().mapFromScene(pos).y())
+        if x < 0 or y < 0 or x >= len(self.imgViewer.image) or y >= len(self.imgViewer.image[0]):
+            return
+        
+        if self.img_mode == ImageModes.Imaging:
+            return
+
+        if self.img_mode == ImageModes.Mask:
+            self.editSetImage(self.mask_image, x, y)
+        elif self.img_mode == ImageModes.Test:
+            self.editSetImage(self.test_image, x, y)
+        elif self.img_mode == ImageModes.THL:
+            self.editSetImage(self.thl_image, x, y)
+    
+    def editSetImage(self, image, row, col):
+        if self.imgControlMode == ImageControlModes.Point:
+            image[row, col] = 1
+        elif self.imgControlMode == ImageControlModes.Row:
+            image[:, col] = np.ones(512)
+        elif self.imgControlMode == ImageControlModes.Column:
+            image[row, :] = np.ones(512)
+        elif self.imgControlMode == ImageControlModes.Area:
+            boxRow = self.imgControl.areaRow.value()
+            boxCol = self.imgControl.areaCol.value()
+            image[row : row+int(boxRow), col : col+int(boxCol)] = np.ones((boxRow, boxCol))
+
+        self.imgViewer.setImage(image, autoRange=False, autoLevels=True)
+
 
     def setImageFromBuffer(self, index):
         if self.buffer_filled:
@@ -409,10 +584,29 @@ class TimepixControl(QMainWindow):
             except ValueError:
                 print("Value Error")
 
+    def loadPictureAction(self):
+        name = QtGui.QFileDialog.getOpenFileName(self, 'Load File')
+        
+    def savePictureAction(self):
+        name = QtGui.QFileDialog.getSaveFileName(self, 'Save File')
+        im = Image.fromarray(self.img_buffer[self.imgViewerControl.frameCounterTool.value()])
+        im.save(name[0] + "_frame.png")
+
+        im = Image.fromarray(self.mask_image)
+        im.save(name[0] + "_mask.png")
+
+        im = Image.fromarray(self.test_image)
+        im.save(name[0] + "_test.png")
+
+        im = Image.fromarray(self.thl_image)
+        im.save(name[0] + "_thl.png")
+
     def _createActions(self):
         #Actions for the File Menu
         self.loadPicture = QAction("&Load Picture...", self)
+        self.loadPicture.triggered.connect(self.loadPictureAction)
         self.savePicture = QAction("&Save Picture...", self)
+        self.savePicture.triggered.connect(self.savePictureAction)
         self.exit = QAction("&Exit", self)
 
         #Actions for the Options Menu
