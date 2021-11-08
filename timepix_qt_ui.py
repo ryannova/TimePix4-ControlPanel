@@ -1,5 +1,6 @@
 from enum import auto
 from logging import NullHandler, error
+from operator import invert
 import sys
 from PyQt5.QtGui import QDropEvent
 from PyQt5.QtCore import QThread, pyqtSignal
@@ -14,6 +15,7 @@ import time
 import socket
 import queue
 from PIL import Image
+from timepix_utils import *
 
 import tp4
 
@@ -65,12 +67,6 @@ Std. dev.:\t{std}\n\n"""
         if count != None:
             self.count = count
         self.updateText()
-
-class QHLine(QFrame):
-    def __init__(self):
-        super(QHLine, self).__init__()
-        self.setFrameShape(QFrame.HLine)
-        self.setFrameShadow(QFrame.Sunken)
 
 class TP4ImageViewControl(QWidget):
     set_img = pyqtSignal(int)
@@ -425,6 +421,7 @@ class TimepixControl(QMainWindow):
 
         self.imgViewer = pg.ImageView(view=plot)
         self.imgViewer.setImage(np.zeros((512,512)))
+        self.imgViewer.getView().invertY(False)
         self.imgViewer.ui.histogram.hide()
         self.imgViewer.ui.roiBtn.hide()
         self.imgViewer.ui.menuBtn.hide()
@@ -586,20 +583,11 @@ class TimepixControl(QMainWindow):
 
     def loadPictureAction(self):
         name = QtGui.QFileDialog.getOpenFileName(self, 'Load File')
+        print("Loading ", name)
         
     def savePictureAction(self):
         name = QtGui.QFileDialog.getSaveFileName(self, 'Save File')
-        im = Image.fromarray(self.img_buffer[self.imgViewerControl.frameCounterTool.value()])
-        im.save(name[0] + "_frame.png")
-
-        im = Image.fromarray(self.mask_image)
-        im.save(name[0] + "_mask.png")
-
-        im = Image.fromarray(self.test_image)
-        im.save(name[0] + "_test.png")
-
-        im = Image.fromarray(self.thl_image)
-        im.save(name[0] + "_thl.png")
+        print("Saving ", name)
 
     def _createActions(self):
         #Actions for the File Menu
