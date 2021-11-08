@@ -449,8 +449,8 @@ class TimepixControl(QMainWindow):
 
         self.setCentralWidget(window)
 
-        self._createActions()
-        self._createMenuBar()
+        self.menu_bar = TimepixMenuBar()
+        self.setMenuBar(self.menu_bar)
 
     def changeImageControlMode(self, mode):
         self.imgControlMode = mode
@@ -581,6 +581,14 @@ class TimepixControl(QMainWindow):
             except ValueError:
                 print("Value Error")
 
+
+
+class TimepixMenuBar(QMenuBar):
+    def __init__(self):
+        super(TimepixMenuBar, self).__init__()
+        self.create_actions()
+        self.create_menu_bar()
+    
     def loadPictureAction(self):
         name = QtGui.QFileDialog.getOpenFileName(self, 'Load File')
         print("Loading ", name)
@@ -588,8 +596,8 @@ class TimepixControl(QMainWindow):
     def savePictureAction(self):
         name = QtGui.QFileDialog.getSaveFileName(self, 'Save File')
         print("Saving ", name)
-
-    def _createActions(self):
+    
+    def create_actions(self):
         #Actions for the File Menu
         self.loadPicture = QAction("&Load Picture...", self)
         self.loadPicture.triggered.connect(self.loadPictureAction)
@@ -643,17 +651,16 @@ class TimepixControl(QMainWindow):
         self.gainMode.setCheckable(True)
         self.gainMode.setDisabled(True)
 
-
-    def _createMenuBar(self):
-        menuBar = self.menuBar()
+    
+    def create_menu_bar(self):
         #Creating File Menu Bar
-        fileMenu = menuBar.addMenu("File")
+        fileMenu = self.addMenu("File")
         fileMenu.addAction(self.loadPicture)
         fileMenu.addAction(self.savePicture)
         fileMenu.addAction(self.exit)
 
         #Creating Options Menu Bar
-        optionsMenu = menuBar.addMenu("Options")
+        optionsMenu = self.addMenu("Options")
         optionsMenu.addAction(self.saveFrameRange)
         optionsMenu.addAction(self.loadFrameRange)
         optionsMenu.addAction(self.instantRangeUpdate)
@@ -665,7 +672,7 @@ class TimepixControl(QMainWindow):
 
         
         #Creating View Menu Bar
-        viewMenu = menuBar.addMenu("View")
+        viewMenu = self.addMenu("View")
         viewMenu.addAction(self.mirrorImage)
         viewMenu.addMenu("Rotate Image")
         viewMenu.addSeparator()
@@ -678,7 +685,7 @@ class TimepixControl(QMainWindow):
     
         
         #Creating Service Menu Bar
-        serviceMenu = menuBar.addMenu("Service Frames")
+        serviceMenu = self.addMenu("Service Frames")
         serviceMenu.addAction(self.maskBits)
         serviceMenu.addAction(self.testBits)
         serviceMenu.addAction(self.THLAdj)
@@ -686,11 +693,7 @@ class TimepixControl(QMainWindow):
         serviceMenu.addAction(self.mode)
         serviceMenu.addAction(self.gainMode)
 
-        self.setMenuBar(menuBar)
-
-class TimepixToolbar(QWidget):
-    def __init__(self, parent=None):
-        pass
+    
 
 
 if __name__ == "__main__":
