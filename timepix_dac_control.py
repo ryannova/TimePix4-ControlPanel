@@ -3,18 +3,8 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QDropEvent
 from PyQt5.QtCore import QThread, pyqtSignal
 import sys
+from timepix_utils import *
 
-class QHLine(QFrame):
-    def __init__(self):
-        super(QHLine, self).__init__()
-        self.setFrameShape(QFrame.HLine)
-        self.setFrameShadow(QFrame.Sunken)
-
-class QVLine(QFrame):
-    def __init__(self):
-        super(QVLine, self).__init__()
-        self.setFrameShape(QFrame.VLine)
-        self.setFrameShadow(QFrame.Sunken)
 
 
 VARIABLES = ["IKrum", "Disc", "Preamp", "BuffAnalogA", "BuffAnalogB", "Hist", "THL", "THLCoarse", "Vcas", "FBK", "GND", "THS", "BiasVDS", "ReflVDS", "ExtDAC"]
@@ -48,6 +38,7 @@ class VariableControl(QWidget):
         self.main_layout.addWidget(self.spin_box)
 
         self.locked = QCheckBox("Locked")
+        self.locked.stateChanged.connect(self.lock_state_changed)
         self.main_layout.addWidget(self.locked)
 
         self.setLayout(self.main_layout)
@@ -58,6 +49,10 @@ class VariableControl(QWidget):
 
     def slider_value_changed(self, value):
         self.spin_box.setValue(value)
+
+    def lock_state_changed(self, state):
+        self.slider.setDisabled(state)
+        self.spin_box.setDisabled(state)
 
 class VariableControlArray(QWidget):
     def __init__(self, labels : list = []):
