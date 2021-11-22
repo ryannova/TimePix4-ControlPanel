@@ -5,8 +5,6 @@ from PyQt5.QtCore import QThread, pyqtSignal
 import sys
 from timepix_utils import *
 
-
-
 VARIABLES = ["IKrum", "Disc", "Preamp", "BuffAnalogA", "BuffAnalogB", "Hist", "THL", "THLCoarse", "Vcas", "FBK", "GND", "THS", "BiasVDS", "ReflVDS", "ExtDAC"]
 
 

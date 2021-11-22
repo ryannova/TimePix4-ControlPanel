@@ -10,3 +10,9 @@ class QVLine(QFrame):
         super(QVLine, self).__init__()
         self.setFrameShape(QFrame.VLine)
         self.setFrameShadow(QFrame.Sunken)
+
+class ImageModes():
+    Imaging = 1
+    Mask = 2
+    Test = 3
+    THL = 4

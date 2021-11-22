@@ -1,22 +1,14 @@
-from enum import auto
-from logging import NullHandler, error
-from operator import invert
 import sys
-from PyQt5.QtGui import QDropEvent
 from PyQt5.QtCore import QThread, pyqtSignal
-from numpy.core import overrides
-from numpy.core.fromnumeric import size
-from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Qt import QtGui
 import numpy as np
 import pyqtgraph as pg
-from PyQt5.QtCore import QLine, Qt
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import *
 import time
 import socket
-import queue
-from PIL import Image
-from timepix_utils import *
 
+from timepix_utils import *
 import tp4
 
 
@@ -71,13 +63,14 @@ Std. dev.:\t{std}\n\n"""
 class TP4ImageViewControl(QWidget):
     set_img = pyqtSignal(int)
     histogram_img = pyqtSignal(int)
+    update_image = pyqtSignal(np.ndarray)
+    update_image_none = pyqtSignal()
 
     def __init__(self, autoLevel=True):
         super(TP4ImageViewControl, self).__init__()
         self.setFixedWidth(350)
         toolbarLayout = QVBoxLayout()
 
-        
         frameToolLayout = QHBoxLayout()
         frameToolLayout.addWidget(QLabel("Frame"))
         self.frameCounterTool = QSpinBox()
@@ -162,14 +155,6 @@ class TP4ImageViewControl(QWidget):
         graphButtonLayout.addWidget(QPushButton("-^"))
         toolbarLayout.addLayout(graphButtonLayout)
 
-        # create list for y-axis
-        y1 = [5, 5, 7, 10, 3, 8, 9, 1, 6, 2]
-        
-        # create horizontal list i.e x-axis
-        x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-
-        bargraph = pg.BarGraphItem(x = x, height = y1, width = 0.6, brush = 'g')
-
         toolbarLayout.addWidget(QTextEdit())
         self.cursorDetails = CursorDetails()
         toolbarLayout.addWidget(self.cursorDetails)
@@ -210,6 +195,7 @@ class TP4ImageViewControl(QWidget):
         self.minLevelSlider.setMaximum(maxLevel)
         self.maxLevelSlider.setMinimum(minLevel)
         self.maxLevelSlider.setMaximum(maxLevel)
+        self.update_image_none.emit()
     
     def updateMinText(self):
         self.minLevel.setText(str(self.minLevelSlider.value()))
@@ -238,14 +224,8 @@ class TP4ImageViewControl(QWidget):
         self.maxLevelLock.setDisabled(autoLevel)
 
 
-class ImageModes():
-    Imaging = 1
-    Mask = 2
-    Test = 3
-    THL = 4
 
-
-class TimePixImageTabs(QWidget):
+class TimepixImageTabs(QWidget):
     modeChanged = pyqtSignal(int)
 
     def __init__(self) -> None:
@@ -429,28 +409,30 @@ class TimepixControl(QMainWindow):
         self.imgViewer.scene.sigMouseClicked.connect(self.mouseClicked)
         imgLayout.addWidget(self.imgViewer)
 
-        self.imgTabs = TimePixImageTabs()
+        self.imgTabs = TimepixImageTabs()
         self.imgTabs.modeChanged.connect(self.changeImageMode)
         imgLayout.addWidget(self.imgTabs)
 
         layout.addLayout(imgLayout)
 
         self.tp4_image_fetcher = TimePixImageFetcher(self.imgViewer)
-        self.tp4_image_fetcher.imageUpdated.connect(self.updateImageViewer)
+        self.tp4_image_fetcher.imageUpdated.connect(self.add_new_image_viewer)
         self.tp4_image_fetcher.start()
 
         self.imgViewerControl = TP4ImageViewControl()
         self.imgViewerControl.updateLevelRange(-10,254+10)
         self.imgViewerControl.frameCounterTool.setMaximum(buffer_size)
-        self.imgViewerControl.set_img.connect(self.setImageFromBuffer)
-        self.imgViewerControl.histogram_img.connect(self.setHistogramImage)
+        self.imgViewerControl.set_img.connect(self.set_image_from_buffer)
+        self.imgViewerControl.histogram_img.connect(self.set_histogram_image)
+        self.imgViewerControl.update_image.connect(self.update_image_viewer)
+        self.imgViewerControl.update_image_none.connect(self.update_image_viewer)
         layout.addWidget(self.imgViewerControl)
         window.setLayout(layout)
 
         self.setCentralWidget(window)
 
-        self.menu_bar = TimepixMenuBar()
-        self.setMenuBar(self.menu_bar)
+        self.tp_menu_bar = TimepixMenuBar()
+        self.setMenuBar(self.tp_menu_bar)
 
     def changeImageControlMode(self, mode):
         self.imgControlMode = mode
@@ -517,29 +499,16 @@ class TimepixControl(QMainWindow):
         self.imgViewer.setImage(image, autoRange=False, autoLevels=True)
 
 
-    def setImageFromBuffer(self, index):
+    def set_image_from_buffer(self, index):
         if self.buffer_filled:
             img = self.img_buffer[(index + self.img_buffer_ptr) % self.img_buffer_size]
         else:
             img = self.img_buffer[index]
         
-        self.imgViewer.setImage(img, autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
-        self.imgViewerControl.cursorDetails.setImageStats(np.min(img), 
-                                                        np.max(img), 
-                                                        np.sum(img), 
-                                                        np.mean(img), 
-                                                        np.std(img), 
-            count=img[self.imgViewerControl.cursorDetails.x_val, self.imgViewerControl.cursorDetails.y_val])
-
-
-        self.imgViewerControl.updateLevelRange(int(self.imgViewer._imageLevels[0][0])-10, int(self.imgViewer._imageLevels[0][1])+10)
-        
-        if self.imgViewerControl.autoLevel.isChecked():
-            self.imgViewerControl.minLevel.setText(str(int(self.imgViewer.levelMin)))
-            self.imgViewerControl.maxLevel.setText(str(int(self.imgViewer.levelMax)))
+        self.update_image_viewer(img)
             
     
-    def setHistogramImage(self, state):
+    def set_histogram_image(self, state):
         if self.imgViewerControl.updateFrame.isChecked() or not state:
             return
         self.imgViewer.setImage(np.sum(self.img_buffer, axis=0), autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
@@ -550,18 +519,12 @@ class TimepixControl(QMainWindow):
             self.imgViewerControl.minLevel.setText(str(int(self.imgViewer.levelMin)))
             self.imgViewerControl.maxLevel.setText(str(int(self.imgViewer.levelMax)))
 
-    def updateImageViewer(self, img):
+    def add_new_image_viewer(self, img):
         if not self.imgViewerControl.updateFrame.isChecked():
             return
         self.img_buffer[self.img_buffer_ptr % self.img_buffer_size] = img
-        self.imgViewer.setImage(img, autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
 
-        self.imgViewerControl.cursorDetails.setImageStats(np.min(img), 
-                                                        np.max(img), 
-                                                        np.sum(img), 
-                                                        np.mean(img), 
-                                                        np.std(img), 
-            count=img[self.imgViewerControl.cursorDetails.x_val, self.imgViewerControl.cursorDetails.y_val])
+        self.update_image_viewer(img)
 
         if self.buffer_filled:
             self.imgViewerControl.frameCounterTool.setValue(self.img_buffer_size)
@@ -570,6 +533,19 @@ class TimepixControl(QMainWindow):
         self.img_buffer_ptr = (self.img_buffer_ptr + 1) % self.img_buffer_size
         if self.img_buffer_ptr == 0:
             self.buffer_filled = True
+
+    def update_image_viewer(self, img : np.ndarray = None):
+        #if img is None:
+        #    img = self.imgViewer.getImageItem().image
+        self.imgViewer.setImage(img, autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
+
+        self.imgViewerControl.cursorDetails.setImageStats(np.min(img), 
+                                                        np.max(img), 
+                                                        np.sum(img), 
+                                                        np.mean(img), 
+                                                        np.std(img), 
+            count=img[self.imgViewerControl.cursorDetails.x_val, self.imgViewerControl.cursorDetails.y_val])
+        
         self.imgViewerControl.updateLevelRange(int(self.imgViewer._imageLevels[0][0])-10, int(self.imgViewer._imageLevels[0][1])+10)
 
         if self.imgViewerControl.autoLevel.isChecked():
