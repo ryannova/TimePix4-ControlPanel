@@ -1,3 +1,7 @@
+####################################################################################
+# Main Timepix 4 User Interface. 
+# Contains most of the utilities for viewing images and communicating with the chips
+####################################################################################
 import sys
 from PyQt5.QtCore import QThread, pyqtSignal
 from pyqtgraph.Qt import QtGui
@@ -9,11 +13,13 @@ import time
 import socket
 
 from timepix_utils import *
-import tp4
 
 
 pg.setConfigOption('background', 'w')
 
+# CursorDetails mangaes the values of the cursor over the a specific images displayed.
+# Inherits QLabel and displays stat information regarding the image and pixel image the 
+# Cursor is hovering over.
 class CursorDetails(QLabel):
     textFormat = """[X,Y]:\t\t[{x_val},{y_val}]
 Count:\t\t{count}
@@ -224,7 +230,9 @@ class TP4ImageViewControl(QWidget):
         self.maxLevelLock.setDisabled(autoLevel)
 
 
-
+# TimepixImageTabs generates and monitor tabs for the Image Viewer.
+# Allows user the cycle between different imaging tabs for setting certain 
+# frames such as mask and thl.
 class TimepixImageTabs(QWidget):
     modeChanged = pyqtSignal(int)
 
@@ -273,11 +281,7 @@ class TimepixImageTabs(QWidget):
         self.checkedButton = self.thlButton
         self.modeChanged.emit(ImageModes.THL)
     
-class ImageControlModes():
-    Point = 1
-    Row = 2
-    Column = 3
-    Area = 4
+
 
 class TimePixImageControls(QWidget):
     modeChanged = pyqtSignal(int)
@@ -333,6 +337,7 @@ class TimePixImageControls(QWidget):
         self.checkedButton = self.areaButton
         self.modeChanged.emit(ImageControlModes.Area)
 
+# Fetches the images 
 class TimePixImageFetcher(QThread):
     imageUpdated = pyqtSignal(np.ndarray)
 
@@ -350,10 +355,10 @@ class TimePixImageFetcher(QThread):
     
     def run(self):
         while True:
-            packet = self.sock.recvfrom(tp4.PACKET_SIZE)
+            packet = self.sock.recvfrom(PACKET_SIZE)
 
-            for i in range(tp4.HEADER_SIZE,len(packet[0])):
-                self.img[(self.counter*128*128) + i - tp4.HEADER_SIZE] += packet[0][i]
+            for i in range(HEADER_SIZE,len(packet[0])):
+                self.img[(self.counter*128*128) + i - HEADER_SIZE] += packet[0][i]
             self.counter += 1
 
             if self.counter >= 16:
