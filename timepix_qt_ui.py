@@ -4,6 +4,8 @@
 ####################################################################################
 import sys
 from PyQt5.QtCore import QThread, pyqtSignal
+from matplotlib.pyplot import hist
+from pyqtgraph import colormap
 from pyqtgraph.Qt import QtGui
 import numpy as np
 import pyqtgraph as pg
@@ -17,18 +19,54 @@ from timepix_utils import *
 
 pg.setConfigOption('background', 'w')
 
+# Fetches the images from the network
+class TimePixImageFetcher(QThread):
+    imageUpdated = pyqtSignal(np.ndarray)
+
+    def __init__(self, imgViewer : pg.ImageView, host="127.0.0.1", port=2686, fps=60):
+        super().__init__()
+        self.imgViewer = imgViewer
+
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.img = np.zeros(446*512)
+        self.sock.bind((host, port))
+
+        self.counter = 0
+        self.integrate_mode = 0
+        self.fps = fps
+    
+    def run(self):
+        while True:
+            packet = self.sock.recvfrom(PACKET_SIZE)
+
+            for i in range(HEADER_SIZE,len(packet[0])):
+                if (self.counter*128*128) + i - HEADER_SIZE >= len(self.img):
+                    break
+                self.img[(self.counter*128*128) + i - HEADER_SIZE] += packet[0][i]
+            self.counter += 1
+
+            if self.counter >= 16:
+                img = np.reshape(self.img, (446,512))
+                self.imageUpdated.emit(img)
+                if not self.integrate_mode:
+                    self.img = np.zeros(446*512)
+                self.counter = 0
+                time.sleep(1/self.fps)
+
 # CursorDetails mangaes the values of the cursor over the a specific images displayed.
 # Inherits QLabel and displays stat information regarding the image and pixel image the 
 # Cursor is hovering over.
 class CursorDetails(QLabel):
     textFormat = """[X,Y]:\t\t[{x_val},{y_val}]
+Matrix:\t\t({matrixInfo})
+(TOP,EOC,SPGroup,SPixel,Pixel)
 Count:\t\t{count}
 Min:\t\t{min}
 Max:\t\t{max}
 Total:\t\t{total}
 Mean:\t\t{mean}
 Std. dev.:\t{std}\n\n"""
-    def __init__(self, x_val=0, y_val=0, count=0, min=0, max=0, total=0, mean=0, std=0):
+    def __init__(self, x_val : int = 0, y_val=0, count=0, min=0, max=0, total=0, mean=0, std=0):
         super(QLabel, self).__init__()
         self.x_val = x_val
         self.y_val = y_val
@@ -42,7 +80,8 @@ Std. dev.:\t{std}\n\n"""
         
     def updateText(self):
         self.setText(self.textFormat.format(x_val=self.x_val, 
-                                            y_val=self.y_val, 
+                                            y_val=self.y_val,
+                                            matrixInfo=image_to_matrix_coordinates(self.x_val, self.y_val),
                                             count=self.count, 
                                             min=self.min, 
                                             max=self.max, 
@@ -66,15 +105,37 @@ Std. dev.:\t{std}\n\n"""
             self.count = count
         self.updateText()
 
+class ImageViewConfig():
+    def __init__(self, frameNumber : int = 0, minLevel : int = 0, maxLevel : int = 0, 
+    autoRange : bool = True, countRate : bool = False, histogram : bool = False, 
+    colormap : str = "gray", colormapSource : str = "matplotlib", filterChain : str = "none") -> None:
+
+        self.frameNumber : int = frameNumber
+        self.minLevel : int = minLevel
+        self.maxLevel : int = maxLevel
+        self.autoRange : bool = autoRange
+        self.countRate : bool = countRate
+        self.histogram : bool = histogram
+        self.colormap : str = colormap
+        self.colormapSource : str = colormapSource
+        self.filterChain :str = filterChain
+
 class TP4ImageViewControl(QWidget):
     set_img = pyqtSignal(int)
     histogram_img = pyqtSignal(int)
     update_image = pyqtSignal(np.ndarray)
-    update_image_none = pyqtSignal()
+    update_image_config = pyqtSignal()
+    update_image_viewer = pyqtSignal(ImageViewConfig)
+
+    color_maps = ["Gray", "Jet", "Hot", "Cool"]
+    auto_range_modes = ["Min - Max", "0.01 - 0.99 fractile", "0.05 - 0.95 fractile"]
 
     def __init__(self, autoLevel=True):
         super(TP4ImageViewControl, self).__init__()
         self.setFixedWidth(350)
+
+        self.imgViewConfig = ImageViewConfig()
+
         toolbarLayout = QVBoxLayout()
 
         frameToolLayout = QHBoxLayout()
@@ -86,7 +147,6 @@ class TP4ImageViewControl(QWidget):
         self.updateFrame = QPushButton("Start")
         self.updateFrame.setCheckable(True)
         self.updateFrame.setChecked(True)
-        self.updateFrame.pressed.connect(self.imageUpdateChange)
         frameToolLayout.addWidget(self.updateFrame)
 
         self.frameDecrement = QPushButton("<")
@@ -104,6 +164,7 @@ class TP4ImageViewControl(QWidget):
         minLevelLayout = QGridLayout()
         minLevelLayout.addWidget(QLabel("Min Level:"), 0, 0)
         self.minLevelLock = QCheckBox("Lock")
+        self.minLevelLock.stateChanged.connect(self.minLockStateChanged)
         minLevelLayout.addWidget(self.minLevelLock, 1, 0)
         self.minLevel = QLineEdit()
         self.minLevel.setFixedHeight(28)
@@ -120,6 +181,7 @@ class TP4ImageViewControl(QWidget):
         maxLevelLayout = QGridLayout()
         maxLevelLayout.addWidget(QLabel("Max Level:"), 0, 0)
         self.maxLevelLock = QCheckBox("Lock")
+        self.maxLevelLock.stateChanged.connect(self.maxLockStateChanged)
         maxLevelLayout.addWidget(self.maxLevelLock, 1, 0)
         self.maxLevel = QLineEdit()
         self.maxLevel.setFixedHeight(28)
@@ -136,16 +198,20 @@ class TP4ImageViewControl(QWidget):
         graphControlLayout = QGridLayout()
         self.autoLevel = QCheckBox("Auto Range:")
         self.autoLevel.setChecked(autoLevel)
-        self.updateAutoLevel(True)
-        self.autoLevel.stateChanged.connect(self.updateAutoLevel)
+        self.autoLevelStateChanged(True)
+        self.autoLevel.stateChanged.connect(self.autoLevelStateChanged)
         graphControlLayout.addWidget(self.autoLevel, 0, 0)
-        graphControlLayout.addWidget(QComboBox(), 0, 1)
+        self.autoRangeMode = QComboBox()
+        for a in self.auto_range_modes:
+            self.autoRangeMode.addItem(a)
+        graphControlLayout.addWidget(self.autoRangeMode, 0, 1)
         graphControlLayout.addWidget(QCheckBox("Count Rate"), 1, 0)
         graphControlLayout.addWidget(QLabel("Time:"), 1, 1)
         self.histogram = QCheckBox("Histogram: ")
         #self.histogram.stateChanged.connect(self.histogram_img)
         graphControlLayout.addWidget(self.histogram, 2, 0)
-        graphControlLayout.addWidget(QPushButton("Auto refine"), 2, 1)
+        self.autoRefine = QPushButton("Auto refine")
+        graphControlLayout.addWidget(self.autoRefine, 2, 1)
         toolbarLayout.addLayout(graphControlLayout)
 
         toolbarLayout.addWidget(QHLine())
@@ -167,17 +233,21 @@ class TP4ImageViewControl(QWidget):
         
         graphSettingsLayout = QGridLayout()
         graphSettingsLayout.addWidget(QLabel("Color map:"), 0, 0)
-        graphSettingsLayout.addWidget(QComboBox(), 0, 1)
+        self.colormap = QComboBox()
+        for c in self.color_maps:
+            self.colormap.addItem(c)
+        self.colormap.currentTextChanged.connect(self.onColorMapChanged)
+        graphSettingsLayout.addWidget(self.colormap, 0, 1)
         graphSettingsLayout.addWidget(QLabel("Filter chain:"), 1, 0)
-        graphSettingsLayout.addWidget(QComboBox(), 1, 1)
+        self.filterChain = QComboBox()
+        self.filterChain.addItem("None")
+        graphSettingsLayout.addWidget(self.filterChain, 1, 1)
         toolbarLayout.addLayout(graphSettingsLayout)
         
-        toolbarLayout.addWidget(QCheckBox("Auto Update Preview"))
+        self.autoUpdatePreview = QCheckBox("Auto Update Preview")
+        self.autoUpdatePreview.setChecked(True)
+        toolbarLayout.addWidget(self.autoUpdatePreview)
         self.setLayout(toolbarLayout)
-
-    def imageUpdateChange(self):
-        if not self.updateFrame.isChecked():
-            self.histogram.setChecked(False)
 
     def incrementFrame(self):
         if self.updateFrame.isChecked():
@@ -201,7 +271,7 @@ class TP4ImageViewControl(QWidget):
         self.minLevelSlider.setMaximum(maxLevel)
         self.maxLevelSlider.setMinimum(minLevel)
         self.maxLevelSlider.setMaximum(maxLevel)
-        self.update_image_none.emit()
+        self.update_image_config.emit()
     
     def updateMinText(self):
         self.minLevel.setText(str(self.minLevelSlider.value()))
@@ -221,13 +291,28 @@ class TP4ImageViewControl(QWidget):
         except ValueError:
             print("Value Error Min Level")
 
-    def updateAutoLevel(self, autoLevel):
-        self.minLevel.setDisabled(autoLevel)
-        self.minLevelSlider.setDisabled(autoLevel)
-        self.minLevelLock.setDisabled(autoLevel)
-        self.maxLevel.setDisabled(autoLevel)
-        self.maxLevelSlider.setDisabled(autoLevel)
-        self.maxLevelLock.setDisabled(autoLevel)
+    def autoLevelStateChanged(self, state):
+        self.minLevelLock.setDisabled(state)
+        self.minLevelLock.setChecked(state)
+        self.minLockStateChanged(state)
+        
+        self.maxLevelLock.setDisabled(state)
+        self.maxLevelLock.setChecked(state)
+        self.maxLockStateChanged(state)
+        self.update_image_config.emit()
+
+    def minLockStateChanged(self, state):
+        self.minLevel.setDisabled(state)
+        self.minLevelSlider.setDisabled(state)
+
+    def maxLockStateChanged(self, state):
+        self.maxLevel.setDisabled(state)
+        self.maxLevelSlider.setDisabled(state)
+
+
+    def onColorMapChanged(self, value):
+        self.imgViewConfig.colormap = value
+        self.update_image_viewer.emit(self.imgViewConfig)
 
 
 # TimepixImageTabs generates and monitor tabs for the Image Viewer.
@@ -281,8 +366,7 @@ class TimepixImageTabs(QWidget):
         self.checkedButton = self.thlButton
         self.modeChanged.emit(ImageModes.THL)
     
-
-
+# Main Control of the Timepix Image Viewer
 class TimePixImageControls(QWidget):
     modeChanged = pyqtSignal(int)
 
@@ -337,39 +421,7 @@ class TimePixImageControls(QWidget):
         self.checkedButton = self.areaButton
         self.modeChanged.emit(ImageControlModes.Area)
 
-# Fetches the images 
-class TimePixImageFetcher(QThread):
-    imageUpdated = pyqtSignal(np.ndarray)
-
-    def __init__(self, imgViewer : pg.ImageView, host="127.0.0.1", port=2686, fps=60):
-        super().__init__()
-        self.imgViewer = imgViewer
-
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.img = np.zeros(512*512)
-        self.sock.bind((host, port))
-
-        self.counter = 0
-        self.integrate_mode = 0
-        self.fps = fps
-    
-    def run(self):
-        while True:
-            packet = self.sock.recvfrom(PACKET_SIZE)
-
-            for i in range(HEADER_SIZE,len(packet[0])):
-                self.img[(self.counter*128*128) + i - HEADER_SIZE] += packet[0][i]
-            self.counter += 1
-
-            if self.counter >= 16:
-                img = np.reshape(self.img, (512,512))
-                self.imageUpdated.emit(img)
-                if not self.integrate_mode:
-                    self.img = np.zeros(512*512)
-                self.counter = 0
-                time.sleep(1/self.fps)
-
-
+# Main Window for the Timepix Control Panel.
 class TimepixControl(QMainWindow):
     """Main Window"""
     def __init__(self, buffer_size=1000, parent=None):
@@ -377,15 +429,15 @@ class TimepixControl(QMainWindow):
         super().__init__(parent)
         self.setWindowTitle("Timepix Control")
         self.resize(1200,800)
-        self.img_buffer = np.zeros((buffer_size, 512, 512))
+        self.img_buffer = np.zeros((buffer_size, 446, 512))
         self.img_buffer_size = buffer_size
         self.img_buffer_ptr = 0
         self.buffer_filled = False
 
         self.img_mode = ImageModes.Imaging
-        self.test_image = np.zeros((512,512))
-        self.mask_image = np.zeros((512,512))
-        self.thl_image = np.zeros((512,512))
+        self.test_image = np.zeros((446, 512))
+        self.mask_image = np.zeros((446, 512))
+        self.thl_image = np.zeros((446, 512))
 
         #Create Centeral Widgets with underlying Layout
         window = QWidget()
@@ -405,7 +457,7 @@ class TimepixControl(QMainWindow):
         plot.setLabel(axis='bottom', text='X-axis')
 
         self.imgViewer = pg.ImageView(view=plot)
-        self.imgViewer.setImage(np.zeros((512,512)))
+        self.imgViewer.setImage(np.zeros((446, 512)))
         self.imgViewer.getView().invertY(False)
         self.imgViewer.ui.histogram.hide()
         self.imgViewer.ui.roiBtn.hide()
@@ -430,7 +482,8 @@ class TimepixControl(QMainWindow):
         self.imgViewerControl.set_img.connect(self.set_image_from_buffer)
         self.imgViewerControl.histogram_img.connect(self.set_histogram_image)
         self.imgViewerControl.update_image.connect(self.update_image_viewer)
-        self.imgViewerControl.update_image_none.connect(self.update_image_viewer)
+        self.imgViewerControl.update_image_viewer.connect(self.onImageControlChanged)
+        self.imgViewerControl.update_image_config.connect(self.update_image_viewer)
         layout.addWidget(self.imgViewerControl)
         window.setLayout(layout)
 
@@ -493,7 +546,7 @@ class TimepixControl(QMainWindow):
         if self.imgControlMode == ImageControlModes.Point:
             image[row, col] = 1
         elif self.imgControlMode == ImageControlModes.Row:
-            image[:, col] = np.ones(512)
+            image[:, col] = np.ones(446)
         elif self.imgControlMode == ImageControlModes.Column:
             image[row, :] = np.ones(512)
         elif self.imgControlMode == ImageControlModes.Area:
@@ -514,15 +567,7 @@ class TimepixControl(QMainWindow):
             
     
     def set_histogram_image(self, state):
-        if self.imgViewerControl.updateFrame.isChecked() or not state:
-            return
-        self.imgViewer.setImage(np.sum(self.img_buffer, axis=0), autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
-
-        self.imgViewerControl.updateLevelRange(int(self.imgViewer._imageLevels[0][0])-10, int(self.imgViewer._imageLevels[0][1])+10)
-
-        if self.imgViewerControl.autoLevel.isChecked():
-            self.imgViewerControl.minLevel.setText(str(int(self.imgViewer.levelMin)))
-            self.imgViewerControl.maxLevel.setText(str(int(self.imgViewer.levelMax)))
+        pass
 
     def add_new_image_viewer(self, img):
         if not self.imgViewerControl.updateFrame.isChecked():
@@ -540,8 +585,8 @@ class TimepixControl(QMainWindow):
             self.buffer_filled = True
 
     def update_image_viewer(self, img : np.ndarray = None):
-        #if img is None:
-        #    img = self.imgViewer.getImageItem().image
+        if img is None:
+            return
         self.imgViewer.setImage(img, autoRange=False, autoLevels=self.imgViewerControl.autoLevel.isChecked())
 
         self.imgViewerControl.cursorDetails.setImageStats(np.min(img), 
@@ -561,9 +606,12 @@ class TimepixControl(QMainWindow):
                 self.imgViewer.setLevels(float(self.imgViewerControl.minLevel.text()), float(self.imgViewerControl.maxLevel.text()))
             except ValueError:
                 print("Value Error")
+    
+    def onImageControlChanged(self, config : ImageViewConfig):
+        self.imgViewer.setColorMap(pg.colormap.get(config.colormap.lower(), source=config.colormapSource))
 
 
-
+# Menu Bar for the Main Timepix UI.
 class TimepixMenuBar(QMenuBar):
     def __init__(self):
         super(TimepixMenuBar, self).__init__()
@@ -616,22 +664,6 @@ class TimepixMenuBar(QMenuBar):
         self.showChipPosition = QAction("&Show Chip Position")
         self.showChipPosition.setCheckable(True)
 
-        #Actions for Service Frame Menu
-        self.maskBits = QAction("Mask Bits")
-        self.maskBits.setCheckable(True)
-        self.testBits = QAction("Test Bits")
-        self.testBits.setCheckable(True)
-        self.THLAdj = QAction("THL Adj.")
-        self.THLAdj.setCheckable(True)
-        self.THHAdj = QAction("THH Adj.")
-        self.THHAdj.setCheckable(True)
-        self.mode = QAction("Mode")
-        self.mode.setCheckable(True)
-        self.mode.setDisabled(True)
-        self.gainMode = QAction("Gain Mode")
-        self.gainMode.setCheckable(True)
-        self.gainMode.setDisabled(True)
-
     
     def create_menu_bar(self):
         #Creating File Menu Bar
@@ -663,19 +695,6 @@ class TimepixMenuBar(QMenuBar):
         viewMenu.addAction(self.showGrid)
         viewMenu.addAction(self.showChipPosition)
         self.showChipPosition.setDisabled(True)
-    
-        
-        #Creating Service Menu Bar
-        serviceMenu = self.addMenu("Service Frames")
-        serviceMenu.addAction(self.maskBits)
-        serviceMenu.addAction(self.testBits)
-        serviceMenu.addAction(self.THLAdj)
-        serviceMenu.addAction(self.THHAdj)
-        serviceMenu.addAction(self.mode)
-        serviceMenu.addAction(self.gainMode)
-
-    
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
