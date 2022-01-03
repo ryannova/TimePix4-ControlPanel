@@ -490,7 +490,11 @@ class TimepixControl(QMainWindow):
         self.setCentralWidget(window)
 
         self.tp_menu_bar = TimepixMenuBar()
+        self.tp_menu_bar.saveMatrix.connect(self.saveMatrixConfig)
         self.setMenuBar(self.tp_menu_bar)
+    
+    def saveMatrixConfig(self, checked):
+        self.mask_image
 
     def changeImageControlMode(self, mode):
         self.imgControlMode = mode
@@ -613,6 +617,8 @@ class TimepixControl(QMainWindow):
 
 # Menu Bar for the Main Timepix UI.
 class TimepixMenuBar(QMenuBar):
+    saveMatrix = pyqtSignal(bool)
+    loadMatrix = pyqtSignal(bool)
     def __init__(self):
         super(TimepixMenuBar, self).__init__()
         self.create_actions()
@@ -635,6 +641,10 @@ class TimepixMenuBar(QMenuBar):
         self.exit = QAction("&Exit", self)
 
         #Actions for the Options Menu
+        self.saveMatrixConfig = QAction("&Save Matrix Config", self)
+        self.saveMatrix = self.saveMatrixConfig.triggered
+        self.loadMatrixConfig = QAction("&Load Matrix Config", self)
+        self.loadMatrix = self.loadMatrixConfig.triggered
         self.saveFrameRange = QAction("&Save Frame Range", self)
         self.saveFrameRange.setCheckable(True)
         self.saveFrameRange.setChecked(True)
@@ -674,6 +684,8 @@ class TimepixMenuBar(QMenuBar):
 
         #Creating Options Menu Bar
         optionsMenu = self.addMenu("Options")
+        optionsMenu.addAction(self.saveMatrixConfig)
+        optionsMenu.addAction(self.loadMatrixConfig)
         optionsMenu.addAction(self.saveFrameRange)
         optionsMenu.addAction(self.loadFrameRange)
         optionsMenu.addAction(self.instantRangeUpdate)
