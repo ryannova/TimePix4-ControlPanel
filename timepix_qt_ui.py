@@ -11,9 +11,7 @@ from PyQt5.QtWidgets import *
 
 from timepix_utils import *
 from timepix_image import *
-
-
-pg.setConfigOption('background', 'w')
+from timepix_edit_image import *
 
 # Main Window for the Timepix Control Panel.
 class TimepixControl(QMainWindow):
@@ -29,9 +27,6 @@ class TimepixControl(QMainWindow):
         self.buffer_filled = False
 
         self.img_mode = ImageModes.Imaging
-        self.test_image = np.zeros((446, 512))
-        self.mask_image = np.zeros((446, 512))
-        self.thl_image = np.zeros((446, 512))
 
         #Create Centeral Widgets with underlying Layout
         window = QWidget()
@@ -40,22 +35,15 @@ class TimepixControl(QMainWindow):
         #Create Image Viewer on Left
         imgLayout = QVBoxLayout()
 
-        self.imgControlMode = ImageControlModes.Point
-        self.imgControl = TimepixEditControls()
-        self.imgControl.modeChanged.connect(self.changeImageControlMode)
-        self.imgControl.setVisible(False)
-        imgLayout.addWidget(self.imgControl)
-
-        
+        self.matrixConfig = TimepixMatrixConfig()
+        self.matrixConfig.imageChanged.connect(self.changeImageMode)
+        self.matrixConfig.setEditControlsVisible(False)
+        imgLayout.addWidget(self.matrixConfig)
 
         self.imgViewer = TimepixImageView()
         self.imgViewer.scene.sigMouseMoved.connect(self.mouseMoved)
         self.imgViewer.scene.sigMouseClicked.connect(self.mouseClicked)
         imgLayout.addWidget(self.imgViewer)
-
-        self.imgTabs = TimepixImageTabs()
-        self.imgTabs.modeChanged.connect(self.changeImageMode)
-        imgLayout.addWidget(self.imgTabs)
 
         layout.addLayout(imgLayout)
 
@@ -81,32 +69,16 @@ class TimepixControl(QMainWindow):
         self.setMenuBar(self.tp_menu_bar)
     
     def saveMatrixConfig(self, checked):
-        self.mask_image
+        pass
 
-    def changeImageControlMode(self, mode):
-        self.imgControlMode = mode
+    def changeImageMode(self, mode, image):
+        self.img_mode = mode
+        self.imgViewerControl.updateFrame.setChecked(False)
 
-    def changeImageMode(self, mode):
         if mode == ImageModes.Imaging:
-            self.img_mode = mode
-            self.imgViewerControl.updateFrame.setChecked(False)
-            self.update_image_viewer(self.img_buffer[self.imgViewerControl.frameCounterTool.value()])#self.imgViewer.setImage(self.img_buffer[self.imgViewerControl.frameCounterTool.value()])
-            self.imgControl.setVisible(False)
-        elif mode == ImageModes.Mask:
-            self.img_mode = mode
-            self.imgViewerControl.updateFrame.setChecked(False)
-            self.update_image_viewer(self.mask_image)#self.imgViewer.setImage(self.mask_image, autoLevels=True)
-            self.imgControl.setVisible(True)
-        elif mode == ImageModes.Test:
-            self.img_mode = mode
-            self.imgViewerControl.updateFrame.setChecked(False)
-            self.update_image_viewer(self.test_image)#self.imgViewer.setImage(self.test_image, autoLevels=True)
-            self.imgControl.setVisible(True)
-        elif mode == ImageModes.THL:
-            self.img_mode = mode
-            self.imgViewerControl.updateFrame.setChecked(False)
-            self.update_image_viewer(self.thl_image)#self.imgViewer.setImage(self.thl_image, autoLevels=True)
-            self.imgControl.setVisible(True)
+            self.update_image_viewer(self.img_buffer[self.imgViewerControl.frameCounterTool.value()])
+        else:
+            self.update_image_viewer(image)
 
     def mouseMoved(self, pos):
         x = int(self.imgViewer.getImageItem().mapFromScene(pos).x())
@@ -117,35 +89,16 @@ class TimepixControl(QMainWindow):
         self.imgViewerControl.cursorDetails.setCursorHover(x_val=x, y_val=y, count=count)
     
     def mouseClicked(self, event):
+        if self.img_mode == ImageModes.Imaging:
+            return
+        
         pos = event.scenePos()
         x = int(self.imgViewer.getImageItem().mapFromScene(pos).x())
         y = int(self.imgViewer.getImageItem().mapFromScene(pos).y())
         if x < 0 or y < 0 or x >= len(self.imgViewer.image) or y >= len(self.imgViewer.image[0]):
             return
         
-        if self.img_mode == ImageModes.Imaging:
-            return
-
-        if self.img_mode == ImageModes.Mask:
-            self.editSetImage(self.mask_image, x, y)
-        elif self.img_mode == ImageModes.Test:
-            self.editSetImage(self.test_image, x, y)
-        elif self.img_mode == ImageModes.THL:
-            self.editSetImage(self.thl_image, x, y)
-    
-    def editSetImage(self, image, row, col):
-        if self.imgControlMode == ImageControlModes.Point:
-            image[row, col] = 1
-        elif self.imgControlMode == ImageControlModes.Row:
-            image[:, col] = np.ones(446)
-        elif self.imgControlMode == ImageControlModes.Column:
-            image[row, :] = np.ones(512)
-        elif self.imgControlMode == ImageControlModes.Area:
-            boxRow = self.imgControl.areaRow.value()
-            boxCol = self.imgControl.areaCol.value()
-            image[row : row+int(boxRow), col : col+int(boxCol)] = np.ones((boxRow, boxCol))
-
-        self.update_image_viewer(image) #self.imgViewer.setImage(image, autoRange=False, autoLevels=True)
+        self.matrixConfig.editImage(x, y)
 
 
     def set_image_from_buffer(self, index):

@@ -7,6 +7,7 @@ from numpy.lib.function_base import rot90
 HEADER_SIZE = 4
 FRAME_SIZE = 128*128
 PACKET_SIZE = HEADER_SIZE + FRAME_SIZE
+IMAGESIZE = (446, 512)
 
 class QHLine(QFrame):
     def __init__(self):
@@ -19,19 +20,6 @@ class QVLine(QFrame):
         super(QVLine, self).__init__()
         self.setFrameShape(QFrame.VLine)
         self.setFrameShadow(QFrame.Sunken)
-
-class ImageModes():
-    Imaging = 1
-    Mask = 2
-    Test = 3
-    THL = 4
-
-# Defining the different types of control modes within a certain image.
-class ImageControlModes():
-    Point = 1
-    Row = 2
-    Column = 3
-    Area = 4
 
 class imageCoordinateOrigin():
     bottom_left = 1

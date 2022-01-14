@@ -304,115 +304,9 @@ class TimepixImageControl(QWidget):
         self.imgViewConfig.colormap = value
         self.update_image_viewer.emit(self.imgViewConfig)
 
-
-# TimepixImageTabs generates and monitor tabs for the Image Viewer.
-# Allows user the cycle between different imaging tabs for setting certain 
-# frames such as mask and thl.
-class TimepixImageTabs(QWidget):
-    modeChanged = pyqtSignal(int)
-
-    def __init__(self) -> None:
-        super().__init__()
-        imgTabsLayout = QHBoxLayout()
-        self.frameButton = QPushButton("Frame")
-        self.frameButton.setCheckable(True)
-        self.frameButton.pressed.connect(self.framePressed)
-        self.frameButton.setChecked(True)
-        self.maskButton = QPushButton("Mask")
-        self.maskButton.setCheckable(True)
-        self.maskButton.pressed.connect(self.maskPressed)
-        self.testButton = QPushButton("Test")
-        self.testButton.setCheckable(True)
-        self.testButton.pressed.connect(self.testPressed)
-        self.thlButton = QPushButton("THL")
-        self.thlButton.setCheckable(True)
-        self.thlButton.pressed.connect(self.thlPressed)
-        imgTabsLayout.addWidget(self.frameButton)
-        imgTabsLayout.addWidget(self.maskButton)
-        imgTabsLayout.addWidget(self.testButton)
-        imgTabsLayout.addWidget(self.thlButton)
-
-        self.checkedButton = self.frameButton
-
-        self.setLayout(imgTabsLayout)
-    
-    def framePressed(self):
-        self.checkedButton.setChecked(False)
-        self.checkedButton = self.frameButton
-        self.modeChanged.emit(ImageModes.Imaging)
-
-    def maskPressed(self):
-        self.checkedButton.setChecked(False)
-        self.checkedButton = self.maskButton
-        self.modeChanged.emit(ImageModes.Mask)
-
-    def testPressed(self):
-        self.checkedButton.setChecked(False)
-        self.checkedButton = self.testButton
-        self.modeChanged.emit(ImageModes.Test)
-
-    def thlPressed(self):
-        self.checkedButton.setChecked(False)
-        self.checkedButton = self.thlButton
-        self.modeChanged.emit(ImageModes.THL)
-    
-# Main Control of the Timepix Image Viewer
-class TimepixEditControls(QWidget):
-    modeChanged = pyqtSignal(int)
-
-    def __init__(self) -> None:
-        super().__init__()
-        imgTabsLayout = QHBoxLayout()
-        self.pointButton = QPushButton("Point")
-        self.pointButton.setCheckable(True)
-        self.pointButton.pressed.connect(self.pointPressed)
-        self.pointButton.setChecked(True)
-        self.rowButton = QPushButton("Row")
-        self.rowButton.setCheckable(True)
-        self.rowButton.pressed.connect(self.rowPressed)
-        self.columnButton = QPushButton("Column")
-        self.columnButton.setCheckable(True)
-        self.columnButton.pressed.connect(self.columnPressed)
-        self.areaButton = QPushButton("Area")
-        self.areaButton.setCheckable(True)
-        self.areaButton.pressed.connect(self.areaPressed)
-        self.areaRow = QSpinBox()
-        self.areaRow.setValue(3)
-        self.areaCol = QSpinBox()
-        self.areaCol.setValue(3)
-        imgTabsLayout.addWidget(self.pointButton)
-        imgTabsLayout.addWidget(self.rowButton)
-        imgTabsLayout.addWidget(self.columnButton)
-        imgTabsLayout.addWidget(self.areaButton)
-        imgTabsLayout.addWidget(self.areaRow)
-        imgTabsLayout.addWidget(self.areaCol)
-
-        self.checkedButton = self.pointButton
-
-        self.setLayout(imgTabsLayout)
-    
-    def pointPressed(self):
-        self.checkedButton.setChecked(False)
-        self.checkedButton = self.pointButton
-        self.modeChanged.emit(ImageControlModes.Point)
-
-    def columnPressed(self):
-        self.checkedButton.setChecked(False)
-        self.checkedButton = self.columnButton
-        self.modeChanged.emit(ImageControlModes.Column)
-
-    def rowPressed(self):
-        self.checkedButton.setChecked(False)
-        self.checkedButton = self.rowButton
-        self.modeChanged.emit(ImageControlModes.Row)
-
-    def areaPressed(self):
-        self.checkedButton.setChecked(False)
-        self.checkedButton = self.areaButton
-        self.modeChanged.emit(ImageControlModes.Area)
-
 class TimepixImageView(pg.ImageView):
     def __init__(self, parent=None, name="ImageView", view=None, imageItem=None, levelMode='mono', *args):
+        pg.setConfigOption('background', 'w')
         if view == None:
             view = pg.PlotItem()
             view.setLabel(axis='left', text='Y-axis')
@@ -428,9 +322,15 @@ class TimepixImageView(pg.ImageView):
 
 
 def main():
-    app = QApplication()
-    layout = 
-    imageView = TimepixImageView()
+    app = QApplication([])
+    window = QWidget()
+    layout = QHBoxLayout()
+    layout.addWidget(TimepixImageView())
+    layout.addWidget(TimepixImageControl())
+    window.setLayout(layout)
+    window.resize(1200,800)
+    window.show()
+    app.exec_()
     
 
 
