@@ -170,7 +170,7 @@ class TimepixMatrixConfig(QWidget):
     def changeMode(self, mode):
         if mode == ImageModes.Imaging:
             self.setEditControlsVisible(False)
-            self.imageChanged.emit(mode, None)
+            self.imageChanged.emit(mode, np.array([]))
         elif mode == ImageModes.Mask:
             self.setEditControlsVisible(True)
             self.imageChanged.emit(mode, self.maskImage)

@@ -3,8 +3,9 @@
 # Contains most of the utilities for viewing images and communicating with the chips
 ####################################################################################
 import sys
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import pyqtSignal, QPoint, QRect
 from pyqtgraph.Qt import QtGui
+from PyQt5.QtGui import QPainter, QBrush, QColor
 import numpy as np
 import pyqtgraph as pg
 from PyQt5.QtWidgets import *
@@ -12,6 +13,8 @@ from PyQt5.QtWidgets import *
 from timepix_utils import *
 from timepix_image import *
 from timepix_edit_image import *
+
+pg.setConfigOption("leftButtonPan", False)
 
 # Main Window for the Timepix Control Panel.
 class TimepixControl(QMainWindow):
@@ -68,6 +71,9 @@ class TimepixControl(QMainWindow):
         self.tp_menu_bar.saveMatrix.connect(self.saveMatrixConfig)
         self.setMenuBar(self.tp_menu_bar)
     
+    def mouseDoubleClickEvent(self, a0: QtGui.QMouseEvent) -> None:
+        self.imgViewer.autoRange()
+
     def saveMatrixConfig(self, checked):
         pass
 
@@ -247,6 +253,46 @@ class TimepixMenuBar(QMenuBar):
         viewMenu.addAction(self.showGrid)
         viewMenu.addAction(self.showChipPosition)
         self.showChipPosition.setDisabled(True)
+
+class MyWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.begin = QPoint()
+        self.end = QPoint()
+        self.ctrlPressed = False
+        self.show()
+
+    def paintEvent(self, event):
+        qp = QPainter(self)
+        br = QBrush(QColor(100, 10, 10, 40))  
+        qp.setBrush(br)   
+        qp.drawRect(QRect(self.begin, self.end))
+
+    def keyPressEvent(self, a0: QtGui.QKeyEvent) -> None:
+        self.ctrlPressed = True
+
+    def keyReleaseEvent(self, a0: QtGui.QKeyEvent) -> None:
+        self.ctrlPressed = False       
+
+    def mousePressEvent(self, event):
+        if self.ctrlPressed == False:
+            return
+        self.begin = event.pos()
+        self.end = event.pos()
+        self.update()
+
+    def mouseMoveEvent(self, event):
+        if self.ctrlPressed == False:
+            return
+        self.end = event.pos()
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        if self.ctrlPressed == False:
+            return
+        self.begin = event.pos()
+        self.end = event.pos()
+        self.update()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
