@@ -2,6 +2,7 @@
 # Main Timepix 4 User Interface. 
 # Contains most of the utilities for viewing images and communicating with the chips
 ####################################################################################
+from io import FileIO
 import sys
 from PyQt5.QtCore import pyqtSignal, QPoint, QRect
 from pyqtgraph.Qt import QtGui
@@ -13,14 +14,17 @@ from PyQt5.QtWidgets import *
 from timepix_utils import *
 from timepix_image import *
 from timepix_edit_image import *
+from timepix_IO import timepix_xml
 
+# Changing major configuration in the pyqtgraph library.
 pg.setConfigOption("leftButtonPan", False)
 
-# Main Window for the Timepix Control Panel.
+# Main Window for Timepix Control GUI. 
+# This class calls all other classes for each component of the interface 
+# and should be the only class interacting directly with the user. Any user
+# interactions with other classes should be passed in through function calls and signals
 class TimepixControl(QMainWindow):
-    """Main Window"""
     def __init__(self, buffer_size=1000, parent=None):
-        """Initializer"""
         super().__init__(parent)
         self.setWindowTitle("Timepix Control")
         self.resize(1200,800)
@@ -41,6 +45,7 @@ class TimepixControl(QMainWindow):
         self.matrixConfig = TimepixMatrixConfig()
         self.matrixConfig.imageChanged.connect(self.changeImageMode)
         self.matrixConfig.setEditControlsVisible(False)
+        self.matrixConfig.setVisible(False)
         imgLayout.addWidget(self.matrixConfig)
 
         self.imgViewer = TimepixImageView()
@@ -69,13 +74,31 @@ class TimepixControl(QMainWindow):
 
         self.tp_menu_bar = TimepixMenuBar()
         self.tp_menu_bar.saveMatrix.connect(self.saveMatrixConfig)
+        self.tp_menu_bar.toggleMatrixConfig.connect(self.toggleMatrixConfig)
+        self.tp_menu_bar.saveToFile.connect(self.saveToFile)
+        self.tp_menu_bar.loadFromFile.connect(self.loadFromFile)
         self.setMenuBar(self.tp_menu_bar)
+
+    def saveToFile(self, filename):
+        xml = timepix_xml()
+        xml.add_images_element(self.img_buffer[self.img_buffer_ptr:self.img_buffer_ptr+1])
+        xml.write_to_file(filename)
+
+    def loadFromFile(self, filename):
+        with open(filename, "r") as f:
+            pass
+            
     
     def mouseDoubleClickEvent(self, a0: QtGui.QMouseEvent) -> None:
         self.imgViewer.autoRange()
 
     def saveMatrixConfig(self, checked):
         pass
+
+    def toggleMatrixConfig(self):
+        self.matrixConfig.setVisible(not self.matrixConfig.isVisible())
+        if not self.matrixConfig.isVisible():
+            self.changeImageMode(ImageModes.Imaging, np.array([]))
 
     def changeImageMode(self, mode, image):
         self.img_mode = mode
@@ -96,15 +119,18 @@ class TimepixControl(QMainWindow):
     
     def mouseClicked(self, event):
         if self.img_mode == ImageModes.Imaging:
+            event.ignore()
             return
         
-        pos = event.scenePos()
-        x = int(self.imgViewer.getImageItem().mapFromScene(pos).x())
-        y = int(self.imgViewer.getImageItem().mapFromScene(pos).y())
-        if x < 0 or y < 0 or x >= len(self.imgViewer.image) or y >= len(self.imgViewer.image[0]):
-            return
-        
-        self.matrixConfig.editImage(x, y)
+        # Left Mouse Button Controls
+        if event.button() == 1:
+            pos = event.scenePos()
+            x = int(self.imgViewer.getImageItem().mapFromScene(pos).x())
+            y = int(self.imgViewer.getImageItem().mapFromScene(pos).y())
+            if x < 0 or y < 0 or x >= len(self.imgViewer.image) or y >= len(self.imgViewer.image[0]):
+                return
+            
+            self.matrixConfig.editImage(x, y)
 
 
     def set_image_from_buffer(self, index):
@@ -165,28 +191,34 @@ class TimepixControl(QMainWindow):
 class TimepixMenuBar(QMenuBar):
     saveMatrix = pyqtSignal(bool)
     loadMatrix = pyqtSignal(bool)
+    toggleMatrixConfig = pyqtSignal()
+    loadFromFile = pyqtSignal(str)
+    saveToFile = pyqtSignal(str)
+    fileDialogFilter = "XML File (*.xml);;All Files (*)"
     def __init__(self):
         super(TimepixMenuBar, self).__init__()
         self.create_actions()
         self.create_menu_bar()
     
-    def loadPictureAction(self):
-        name = QtGui.QFileDialog.getOpenFileName(self, 'Load File')
-        print("Loading ", name)
+    def loadFileAction(self):
+        name = QtGui.QFileDialog.getOpenFileName(self, 'Load File', filter=self.fileDialogFilter)
+        self.loadFromFile.emit(name[0])
         
-    def savePictureAction(self):
-        name = QtGui.QFileDialog.getSaveFileName(self, 'Save File')
-        print("Saving ", name)
+    def saveFileAction(self):
+        name = QtGui.QFileDialog.getSaveFileName(self, 'Save File', filter=self.fileDialogFilter)
+        self.saveToFile.emit(name[0])
     
     def create_actions(self):
         #Actions for the File Menu
         self.loadPicture = QAction("&Load Picture...", self)
-        self.loadPicture.triggered.connect(self.loadPictureAction)
+        self.loadPicture.triggered.connect(self.loadFileAction)
         self.savePicture = QAction("&Save Picture...", self)
-        self.savePicture.triggered.connect(self.savePictureAction)
+        self.savePicture.triggered.connect(self.saveFileAction)
         self.exit = QAction("&Exit", self)
 
         #Actions for the Options Menu
+        self.matrixConfig = QAction("Toggle Matrix Configuration")
+        self.matrixConfig.triggered.connect(self.toggleMatrixConfig)
         self.saveMatrixConfig = QAction("&Save Matrix Config", self)
         self.saveMatrix = self.saveMatrixConfig.triggered
         self.loadMatrixConfig = QAction("&Load Matrix Config", self)
@@ -230,6 +262,7 @@ class TimepixMenuBar(QMenuBar):
 
         #Creating Options Menu Bar
         optionsMenu = self.addMenu("Options")
+        optionsMenu.addAction(self.matrixConfig)
         optionsMenu.addAction(self.saveMatrixConfig)
         optionsMenu.addAction(self.loadMatrixConfig)
         optionsMenu.addAction(self.saveFrameRange)

@@ -136,9 +136,9 @@ class TimepixImageEditControls(QWidget):
 class TimepixMatrixConfig(QWidget):
     imageChanged = pyqtSignal(int, np.ndarray)
     def __init__(self) -> None:
-        self.testImage = np.zeros(IMAGESIZE)
-        self.maskImage = np.zeros(IMAGESIZE)
-        self.thlImage = np.zeros(IMAGESIZE)
+        self.testImage = np.zeros(IMAGESIZE, dtype=np.int64)
+        self.maskImage = np.zeros(IMAGESIZE, dtype=np.int64)
+        self.thlImage = np.zeros(IMAGESIZE, dtype=np.int64)
         super().__init__()
 
         widgetLayout = QVBoxLayout()
