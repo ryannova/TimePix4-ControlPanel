@@ -136,9 +136,9 @@ class TimepixImageEditControls(QWidget):
 class TimepixMatrixConfig(QWidget):
     imageChanged = pyqtSignal(int, np.ndarray)
     def __init__(self) -> None:
-        self.testImage = np.zeros(IMAGESIZE, dtype=np.int64)
-        self.maskImage = np.zeros(IMAGESIZE, dtype=np.int64)
-        self.thlImage = np.zeros(IMAGESIZE, dtype=np.int64)
+        self.testImage = np.zeros(IMAGE_SIZE, dtype=np.int64)
+        self.maskImage = np.zeros(IMAGE_SIZE, dtype=np.int64)
+        self.thlImage = np.zeros(IMAGE_SIZE, dtype=np.int64)
         super().__init__()
 
         widgetLayout = QVBoxLayout()
@@ -198,9 +198,9 @@ class TimepixMatrixConfig(QWidget):
         if self.getEditMode() == ImageEditModes.Point:
             image[row, col] = 1
         elif self.getEditMode() == ImageEditModes.Row:
-            image[:, col] = np.ones(IMAGESIZE[0])
+            image[:, col] = np.ones(IMAGE_SIZE[0])
         elif self.getEditMode() == ImageEditModes.Column:
-            image[row, :] = np.ones(IMAGESIZE[1])
+            image[row, :] = np.ones(IMAGE_SIZE[1])
         elif self.getEditMode() == ImageEditModes.Area:
             boxRow, boxCol = self.getEditArea()
             image[row : row+int(boxRow), col : col+int(boxCol)] = np.ones((boxRow, boxCol))

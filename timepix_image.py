@@ -13,12 +13,12 @@ from timepix_utils import *
 class TimePixImageFetcher(QThread):
     imageUpdated = pyqtSignal(np.ndarray)
 
-    def __init__(self, imgViewer : pg.ImageView, host="127.0.0.1", port=2686, fps=60):
+    def __init__(self, imgViewer : pg.ImageView, host="127.0.0.1", port=7686, fps=60):
         super().__init__()
         self.imgViewer = imgViewer
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.img = np.zeros(446*512)
+        self.img = np.zeros(446*512, dtype=np.int16)
         self.sock.bind((host, port))
 
         self.counter = 0

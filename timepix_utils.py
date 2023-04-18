@@ -4,10 +4,12 @@ import unittest
 from PyQt5.QtWidgets import QFrame
 from numpy.lib.function_base import rot90
 
+from references.tp4 import FRAME_SIZE
+
 HEADER_SIZE = 4
-FRAME_SIZE = 128*128
+FRAME_SIZE = 56*16*4*8
 PACKET_SIZE = HEADER_SIZE + FRAME_SIZE
-IMAGESIZE = (446, 512)
+IMAGE_SIZE = (446, 512)
 
 class QHLine(QFrame):
     def __init__(self):
