@@ -1,0 +1,8 @@
+VBiasPreamp	40967	80
+VbiasDiscTailNMOS	40964	50
+VBiasIkrum	40965	10
+VBiasDAC	40961	50
+VBiasLevelShift	40966	50
+VbiasDiscPMOS	40962	50
+VbiasDiscTRAFF	4096	50
+VbiasADC	40960	128
